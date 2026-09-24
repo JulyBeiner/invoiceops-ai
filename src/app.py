@@ -1,72 +1,74 @@
 """
-This module takes care of starting the API Server, Loading the DB and Adding the endpoints
+Application factory: builds and configures the Flask app.
 """
 import os
-from flask import Flask, request, jsonify, url_for, send_from_directory
-from flask_migrate import Migrate
-from flask_swagger import swagger
-from api.utils import APIException, generate_sitemap
-from api.models import db
-from api.routes import api
+
+from flask import Flask, jsonify, send_from_directory
+
 from api.admin import setup_admin
 from api.commands import setup_commands
+from api.config import config_by_name
+from api.extensions import cors, db, jwt, migrate
+from api.routes import api
+from api.utils import APIException, generate_sitemap
 
-# from models import Person
-
-ENV = "development" if os.getenv("FLASK_DEBUG") == "1" else "production"
-static_file_dir = os.path.join(os.path.dirname(
-    os.path.realpath(__file__)), '../dist/')
-app = Flask(__name__)
-app.url_map.strict_slashes = False
-
-# database condiguration
-db_url = os.getenv("DATABASE_URL")
-if db_url is not None:
-    app.config['SQLALCHEMY_DATABASE_URI'] = db_url.replace(
-        "postgres://", "postgresql://")
-else:
-    app.config['SQLALCHEMY_DATABASE_URI'] = "sqlite:////tmp/test.db"
-
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-MIGRATE = Migrate(app, db, compare_type=True)
-db.init_app(app)
-
-# add the admin
-setup_admin(app)
-
-# add the admin
-setup_commands(app)
-
-# Add all endpoints form the API with a "api" prefix
-app.register_blueprint(api, url_prefix='/api')
-
-# Handle/serialize errors like a JSON object
+STATIC_DIR = os.path.join(os.path.dirname(
+    os.path.realpath(__file__)), "../dist/")
 
 
-@app.errorhandler(APIException)
-def handle_invalid_usage(error):
-    return jsonify(error.to_dict()), error.status_code
-
-# generate sitemap with all your endpoints
+def _default_config_name():
+    return "development" if os.getenv("FLASK_DEBUG") == "1" else "production"
 
 
-@app.route('/')
-def sitemap():
-    if ENV == "development":
-        return generate_sitemap(app)
-    return send_from_directory(static_file_dir, 'index.html')
+def create_app(config_name=None):
+    config_name = config_name or os.getenv("APP_ENV") or _default_config_name()
 
-# any other endpoint will try to serve it like a static file
-@app.route('/<path:path>', methods=['GET'])
-def serve_any_other_file(path):
-    if not os.path.isfile(os.path.join(static_file_dir, path)):
-        path = 'index.html'
-    response = send_from_directory(static_file_dir, path)
-    response.cache_control.max_age = 0  # avoid cache memory
-    return response
+    app = Flask(__name__)
+    app.url_map.strict_slashes = False
+    app.config.from_object(config_by_name[config_name])
+
+    if not app.config.get("SQLALCHEMY_DATABASE_URI"):
+        raise RuntimeError("DATABASE_URL is not set. Check your .env file.")
+
+    db.init_app(app)
+    migrate.init_app(app, db, compare_type=True)
+    jwt.init_app(app)
+    cors.init_app(app, resources={r"/api/*": {"origins": "*"}})
+
+    app.register_blueprint(api, url_prefix="/api")
+    setup_commands(app)
+    if app.config["ADMIN_ENABLED"]:
+        setup_admin(app)
+
+    register_error_handlers(app)
+    register_frontend_routes(app)
+    return app
 
 
-# this only runs if `$ python src/main.py` is executed
-if __name__ == '__main__':
-    PORT = int(os.environ.get('PORT', 3001))
-    app.run(host='0.0.0.0', port=PORT, debug=True)
+def register_error_handlers(app):
+    @app.errorhandler(APIException)
+    def handle_api_exception(error):
+        return jsonify(error.to_dict()), error.status_code
+
+
+def register_frontend_routes(app):
+    @app.route("/")
+    def sitemap():
+        if app.config["DEBUG"]:
+            return generate_sitemap(app)
+        return send_from_directory(STATIC_DIR, "index.html")
+
+    @app.route("/<path:path>", methods=["GET"])
+    def serve_any_other_file(path):
+        if not os.path.isfile(os.path.join(STATIC_DIR, path)):
+            path = "index.html"
+        response = send_from_directory(STATIC_DIR, path)
+        response.cache_control.max_age = 0
+        return response
+
+
+app = create_app()
+
+if __name__ == "__main__":
+    PORT = int(os.environ.get("PORT", 3001))
+    app.run(host="0.0.0.0", port=PORT, debug=True)
