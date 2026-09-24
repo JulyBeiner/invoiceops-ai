@@ -4,6 +4,7 @@ This module takes care of starting the API Server, Loading the DB and Adding the
 from flask import Flask, request, jsonify, url_for, Blueprint
 from api.models import db, User
 from api.utils import generate_sitemap, APIException
+from sqlalchemy import text
 
 api = Blueprint('api', __name__)
 
@@ -16,3 +17,9 @@ def handle_hello():
     }
 
     return jsonify(response_body), 200
+
+
+@api.route('/health', methods=['GET'])
+def health():
+    db.session.execute(text("SELECT 1"))
+    return jsonify({"status": "ok", "database": "ok"}), 200
