@@ -8,7 +8,7 @@ from flask import Flask, jsonify, send_from_directory
 from api.admin import setup_admin
 from api.commands import setup_commands
 from api.config import config_by_name
-from api.extensions import cors, db, jwt, migrate
+from api.extensions import bcrypt, cors, db, jwt, migrate
 from api.routes import api
 from api.utils import APIException, generate_sitemap
 
@@ -33,6 +33,7 @@ def create_app(config_name=None):
     db.init_app(app)
     migrate.init_app(app, db, compare_type=True)
     jwt.init_app(app)
+    bcrypt.init_app(app)
     cors.init_app(app, resources={r"/api/*": {"origins": "*"}})
 
     app.register_blueprint(api, url_prefix="/api")
