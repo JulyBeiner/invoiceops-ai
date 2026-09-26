@@ -1,5 +1,5 @@
 from flask import Blueprint, jsonify, request
-from flask_jwt_extended import create_access_token
+from flask_jwt_extended import create_access_token, get_jwt_identity, jwt_required
 
 from api.extensions import db
 from api.models import Tenant, User
@@ -30,3 +30,24 @@ def register():
 
     token = create_access_token(identity=str(user.id))
     return jsonify({"user": user.serialize(), "token": token}), 201
+
+
+@auth_bp.route("/login", methods=["POST"])
+def login():
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    password = data.get("password") or ""
+
+    user = db.session.scalar(db.select(User).filter_by(email=email))
+    if user is None or not user.is_active or not user.check_password(password):
+        return jsonify({"message": "Invalid email or password"}), 401
+
+    token = create_access_token(identity=str(user.id))
+    return jsonify({"user": user.serialize(), "token": token}), 200
+
+
+@auth_bp.route("/me", methods=["GET"])
+@jwt_required()
+def me():
+    user = db.session.get(User, int(get_jwt_identity()))
+    return jsonify(user.serialize()), 200
