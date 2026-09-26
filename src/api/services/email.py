@@ -10,7 +10,7 @@ def send_email(to, subject, html):
     api_key = os.getenv("BREVO_API_KEY")
     sender = os.getenv("MAIL_FROM")
 
-    if not api_key or not sender:
+    if current_app.config.get("TESTING") or not api_key or not sender:
         current_app.logger.info(
             "EMAIL (not sent) to=%s subject=%s\n%s", to, subject, html)
         return False
