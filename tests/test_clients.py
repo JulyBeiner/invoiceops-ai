@@ -51,3 +51,42 @@ def test_clients_are_isolated_per_tenant(client):
     response = client.get("/api/clients", headers=headers_b)
 
     assert response.get_json() == []
+
+
+def create_client(client, headers, name="Oficinas Sol"):
+    """Create a client through the API and return its JSON."""
+    return client.post("/api/clients", json={"name": name}, headers=headers).get_json()
+
+
+def test_get_update_and_archive_client(client):
+    headers = auth_header(client)
+    client_id = create_client(client, headers)["id"]
+
+    response = client.get(f"/api/clients/{client_id}", headers=headers)
+    assert response.status_code == 200
+    assert response.get_json()["name"] == "Oficinas Sol"
+
+    response = client.put(
+        f"/api/clients/{client_id}",
+        json={"name": "Oficinas Luna", "tax_id": "B12345678"},
+        headers=headers,
+    )
+    assert response.status_code == 200
+    assert response.get_json()["name"] == "Oficinas Luna"
+    assert response.get_json()["tax_id"] == "B12345678"
+
+    response = client.delete(f"/api/clients/{client_id}", headers=headers)
+    assert response.status_code == 200
+    assert response.get_json()["is_archived"] is True
+
+
+def test_client_of_another_tenant_is_not_found(client):
+    headers_a = auth_header(client, email="a@demo.com", company="Empresa A")
+    headers_b = auth_header(client, email="b@demo.com", company="Empresa B")
+    client_id = create_client(client, headers_a)["id"]
+
+    url = f"/api/clients/{client_id}"
+    assert client.get(url, headers=headers_b).status_code == 404
+    assert client.put(url, json={"name": "Hack"},
+                      headers=headers_b).status_code == 404
+    assert client.delete(url, headers=headers_b).status_code == 404
