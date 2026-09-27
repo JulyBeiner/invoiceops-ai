@@ -9,7 +9,7 @@ from api.admin import setup_admin
 from api.commands import setup_commands
 from api.config import config_by_name
 from api.extensions import bcrypt, cors, db, jwt, migrate
-from api.routes import api, auth_bp, clients_bp
+from api.routes import api, auth_bp, clients_bp, services_bp
 from api.utils import APIException, generate_sitemap
 
 STATIC_DIR = os.path.join(os.path.dirname(
@@ -39,6 +39,7 @@ def create_app(config_name=None):
     app.register_blueprint(api, url_prefix="/api")
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
     app.register_blueprint(clients_bp, url_prefix="/api/clients")
+    app.register_blueprint(services_bp, url_prefix="/api/services")
     setup_commands(app)
     if app.config["ADMIN_ENABLED"]:
         setup_admin(app)
