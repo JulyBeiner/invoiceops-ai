@@ -26,6 +26,8 @@ class Activity(TimestampMixin, db.Model):
         Date, nullable=False, index=True)
     quantity: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     external_id: Mapped[str | None] = mapped_column(String(80))
+    proposal_line_id: Mapped[int | None] = mapped_column(
+        ForeignKey("proposal_line.id"), index=True)
 
     client = relationship("Client", backref="activities")
     service = relationship("Service")
@@ -38,4 +40,5 @@ class Activity(TimestampMixin, db.Model):
             "performed_on": self.performed_on.isoformat(),
             "quantity": str(self.quantity),
             "external_id": self.external_id,
+            "proposal_line_id": self.proposal_line_id,
         }
