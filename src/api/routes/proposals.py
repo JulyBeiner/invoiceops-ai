@@ -1,0 +1,51 @@
+from flask import Blueprint, jsonify
+from flask_jwt_extended import jwt_required
+
+from api.extensions import db
+from api.models import BillingRun, Proposal
+from api.routes.helpers import current_tenant_id
+
+proposals_bp = Blueprint("proposals", __name__)
+
+
+def _get_proposal(proposal_id, tenant_id):
+    """Return the Proposal with that id inside this tenant, or None."""
+    return db.session.scalar(
+        db.select(Proposal).join(BillingRun)
+        .filter(Proposal.id == proposal_id, BillingRun.tenant_id == tenant_id))
+
+
+def _serialize_with_activities(proposal):
+    """Proposal JSON where every line carries its full activities (the annex)."""
+    data = proposal.serialize()
+    for line_data, line in zip(data["lines"], proposal.lines):
+        activities = sorted(line.activities,
+                            key=lambda a: (a.performed_on, a.id))
+        line_data["activities"] = [a.serialize() for a in activities]
+    return data
+
+
+@proposals_bp.route("/<int:proposal_id>", methods=["GET"])
+@jwt_required()
+def get_proposal(proposal_id):
+    proposal = _get_proposal(proposal_id, current_tenant_id())
+    if proposal is None:
+        return jsonify({"message": "proposal not found"}), 404
+    return jsonify(_serialize_with_activities(proposal)), 200
+
+
+@proposals_bp.route("/<int:proposal_id>/approve", methods=["POST"])
+@jwt_required()
+def approve_proposal(proposal_id):
+    proposal = _get_proposal(proposal_id, current_tenant_id())
+    if proposal is None:
+        return jsonify({"message": "proposal not found"}), 404
+    if proposal.status == "approved":
+        return jsonify({"message": "proposal is already approved"}), 409
+
+    proposal.status = "approved"
+    run = proposal.billing_run
+    if all(p.status == "approved" for p in run.proposals):
+        run.status = "closed"
+    db.session.commit()
+    return jsonify(_serialize_with_activities(proposal)), 200
