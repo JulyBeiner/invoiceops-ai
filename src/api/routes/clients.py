@@ -1,8 +1,10 @@
+from decimal import Decimal, InvalidOperation
+
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import jwt_required
 
 from api.extensions import db
-from api.models import Client
+from api.models import Client, Contract, ContractPrice, Service
 from api.routes.helpers import current_tenant_id
 
 clients_bp = Blueprint("clients", __name__)
@@ -51,7 +53,11 @@ def get_client(client_id):
     client = _get_client(client_id)
     if client is None:
         return jsonify({"message": "Client not found"}), 404
-    return jsonify(client.serialize()), 200
+    contract = db.session.scalar(db.select(Contract).filter_by(
+        client_id=client.id, is_active=True))
+    body = client.serialize()
+    body["contract"] = contract.serialize() if contract else None
+    return jsonify(body), 200
 
 
 @clients_bp.route("/<int:client_id>", methods=["PUT"])
@@ -87,3 +93,55 @@ def archive_client(client_id):
     client.is_archived = True
     db.session.commit()
     return jsonify(client.serialize()), 200
+
+
+def _to_money(value, field):
+    """Turn a JSON value into a Decimal with 2 decimals, or raise ValueError."""
+    try:
+        amount = Decimal(str(value)).quantize(Decimal("0.01"))
+    except (InvalidOperation, TypeError):
+        raise ValueError(f"{field} must be a number")
+    if amount < 0:
+        raise ValueError(f"{field} cannot be negative")
+    return amount
+
+
+@clients_bp.route("/<int:client_id>/contract", methods=["PUT"])
+@jwt_required()
+def set_contract(client_id):
+    client = _get_client(client_id)
+    if client is None:
+        return jsonify({"message": "Client not found"}), 404
+
+    data = request.get_json(silent=True) or {}
+    try:
+        fixed_fee = _to_money(
+            data.get("fixed_monthly_fee", "0"), "fixed_monthly_fee")
+        vat_rate = _to_money(data.get("vat_rate", "21"), "vat_rate")
+        prices = []
+        seen = set()
+        for item in data.get("prices") or []:
+            service_id = item.get("service_id")
+            if service_id in seen:
+                raise ValueError(f"service {service_id} appears twice")
+            seen.add(service_id)
+            service = db.session.scalar(db.select(Service).filter_by(
+                id=service_id, tenant_id=current_tenant_id()))
+            if service is None:
+                raise ValueError(f"service {service_id} not found")
+            prices.append(ContractPrice(
+                service=service,
+                unit_price=_to_money(item.get("unit_price"), "unit_price")))
+    except ValueError as error:
+        return jsonify({"message": str(error)}), 400
+
+    contract = db.session.scalar(db.select(Contract).filter_by(
+        client_id=client.id, is_active=True))
+    if contract is None:
+        contract = Contract(client=client)
+        db.session.add(contract)
+    contract.fixed_monthly_fee = fixed_fee
+    contract.vat_rate = vat_rate
+    contract.prices = prices
+    db.session.commit()
+    return jsonify(contract.serialize()), 200
