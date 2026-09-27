@@ -23,6 +23,8 @@ def register():
 
     if not company_name or not full_name or not email or not password:
         return jsonify({"message": "company_name, full_name, email and password are required"}), 400
+    if "@" not in email or "." not in email.split("@")[-1]:
+        return jsonify({"message": "Invalid email"}), 400
     if len(password) < 8:
         return jsonify({"message": "Password must be at least 8 characters"}), 400
     if db.session.scalar(db.select(User).filter_by(email=email)):

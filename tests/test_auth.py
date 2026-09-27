@@ -63,3 +63,9 @@ def test_me_returns_current_user(client):
 
     assert response.status_code == 200
     assert response.get_json()["email"] == "july@demo.com"
+
+
+def test_register_rejects_invalid_email(client):
+    response = register(client, email="tu_email")
+
+    assert response.status_code == 400

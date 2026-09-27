@@ -13,6 +13,7 @@ def test_clients_require_token(client):
     response = client.get("/api/clients")
 
     assert response.status_code == 401
+    assert "message" in response.get_json()
 
 
 def test_create_and_list_clients(client):
