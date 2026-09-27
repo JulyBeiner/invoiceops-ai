@@ -1,3 +1,5 @@
+import csv
+import io
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
@@ -80,3 +82,74 @@ def list_activities():
     activities = db.session.scalars(
         query.order_by(Activity.performed_on, Activity.id)).all()
     return jsonify([activity.serialize() for activity in activities]), 200
+
+
+CSV_COLUMNS = ("external_id", "client", "service", "performed_on", "quantity")
+
+
+def _read_csv_rows(file_storage):
+    """Decode the uploaded CSV. Return (rows, None) or (None, error)."""
+    try:
+        text = file_storage.read().decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return None, "file must be UTF-8 text"
+    reader = csv.DictReader(io.StringIO(text))
+    fieldnames = [name.strip() for name in (reader.fieldnames or [])]
+    missing = [name for name in CSV_COLUMNS if name not in fieldnames]
+    if missing:
+        return None, f"CSV is missing columns: {', '.join(missing)}"
+    return list(reader), None
+
+
+@activities_bp.route("/import", methods=["POST"])
+@jwt_required()
+def import_activities():
+    tenant_id = current_tenant_id()
+    file = request.files.get("file")
+    if file is None:
+        return jsonify({"message": "file is required"}), 400
+    rows, error = _read_csv_rows(file)
+    if error:
+        return jsonify({"message": error}), 400
+
+    clients = {c.name.lower(): c.id for c in db.session.scalars(
+        db.select(Client).filter_by(tenant_id=tenant_id, is_archived=False))}
+    services = {s.name.lower(): s.id for s in db.session.scalars(
+        db.select(Service).filter_by(tenant_id=tenant_id))}
+    existing_ids = set(db.session.scalars(db.select(Activity.external_id).where(
+        Activity.tenant_id == tenant_id, Activity.external_id.is_not(None))))
+
+    preview, to_save, seen = [], [], set()
+    for line, row in enumerate(rows, start=2):
+        external_id = (row.get("external_id") or "").strip()
+        if external_id and (external_id in existing_ids or external_id in seen):
+            preview.append({"line": line, "status": "duplicate", "data": row})
+            continue
+        data = {
+            "client_id": clients.get((row.get("client") or "").strip().lower()),
+            "service_id": services.get((row.get("service") or "").strip().lower()),
+            "performed_on": (row.get("performed_on") or "").strip(),
+            "quantity": (row.get("quantity") or "").strip(),
+            "external_id": external_id,
+        }
+        activity, error = _parse_activity(data, tenant_id)
+        if error:
+            preview.append({"line": line, "status": "error",
+                           "message": error, "data": row})
+            continue
+        if external_id:
+            seen.add(external_id)
+        to_save.append(activity)
+        preview.append({"line": line, "status": "ok", "data": row})
+
+    commit = request.args.get("commit") == "true"
+    if commit:
+        db.session.add_all(to_save)
+        db.session.commit()
+
+    summary = {
+        "ok": len(to_save),
+        "errors": sum(1 for r in preview if r["status"] == "error"),
+        "duplicates": sum(1 for r in preview if r["status"] == "duplicate"),
+    }
+    return jsonify({"committed": commit, "summary": summary, "rows": preview}), 200
