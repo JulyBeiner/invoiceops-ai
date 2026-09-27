@@ -114,3 +114,20 @@ def test_billing_run_of_other_tenant_is_not_found(client):
     assert client.get(f"/api/billing-runs/{run_id}",
                       headers=headers_b).status_code == 404
     assert client.get("/api/billing-runs", headers=headers_b).get_json() == []
+
+
+def test_cannot_add_activity_to_a_closed_month(client):
+    headers = auth_header(client)
+    client_id, service_id = setup_billable_client(client, headers)
+    client.post("/api/billing-runs", json={"month": "2026-09"},
+                headers=headers)
+    payload = {"client_id": client_id, "service_id": service_id,
+               "performed_on": "2026-09-20", "quantity": 1}
+
+    response = client.post("/api/activities", json=payload, headers=headers)
+    assert response.status_code == 400
+    assert "closed" in response.get_json()["message"]
+
+    response = client.post("/api/activities", json={
+        **payload, "performed_on": "2026-10-01"}, headers=headers)
+    assert response.status_code == 201

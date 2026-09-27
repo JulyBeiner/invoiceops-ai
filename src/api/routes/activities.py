@@ -8,7 +8,7 @@ from flask_jwt_extended import jwt_required
 from sqlalchemy import extract
 
 from api.extensions import db
-from api.models import Activity, Client, Service
+from api.models import Activity, BillingRun, Client, Service
 from api.routes.helpers import current_tenant_id
 
 activities_bp = Blueprint("activities", __name__)
@@ -28,6 +28,10 @@ def _parse_activity(data, tenant_id):
         performed_on = date.fromisoformat(str(data.get("performed_on")))
     except ValueError:
         return None, "performed_on must be a date (YYYY-MM-DD)"
+    if db.session.scalar(db.select(BillingRun).filter_by(
+            tenant_id=tenant_id, year=performed_on.year,
+            month=performed_on.month)):
+        return None, f"{performed_on:%Y-%m} is already closed"
     try:
         quantity = Decimal(str(data.get("quantity"))).quantize(Decimal("0.01"))
     except InvalidOperation:
