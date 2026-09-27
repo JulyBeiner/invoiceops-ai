@@ -85,3 +85,32 @@ def test_clients_with_nothing_to_bill_get_no_proposal(client):
                         headers=headers_b).get_json()
     assert len(run_a["proposals"]) == 1
     assert run_b["proposals"] == []
+
+
+def test_list_and_get_billing_runs(client):
+    headers = auth_header(client)
+    setup_billable_client(client, headers)
+    run_id = client.post("/api/billing-runs", json={"month": "2026-09"},
+                         headers=headers).get_json()["id"]
+    client.post("/api/billing-runs", json={"month": "2026-10"},
+                headers=headers)
+
+    response = client.get("/api/billing-runs", headers=headers)
+    assert response.status_code == 200
+    assert [(r["year"], r["month"]) for r in response.get_json()] == [
+        (2026, 10), (2026, 9)]
+
+    response = client.get(f"/api/billing-runs/{run_id}", headers=headers)
+    assert response.status_code == 200
+    assert response.get_json()["proposals"][0]["total"] == "701.80"
+
+
+def test_billing_run_of_other_tenant_is_not_found(client):
+    headers_a = auth_header(client, email="a@demo.com", company="Empresa A")
+    headers_b = auth_header(client, email="b@demo.com", company="Empresa B")
+    run_id = client.post("/api/billing-runs", json={"month": "2026-09"},
+                         headers=headers_a).get_json()["id"]
+
+    assert client.get(f"/api/billing-runs/{run_id}",
+                      headers=headers_b).status_code == 404
+    assert client.get("/api/billing-runs", headers=headers_b).get_json() == []

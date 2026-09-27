@@ -63,6 +63,31 @@ def _build_client_proposal(client, contract, activities):
     return proposal
 
 
+def _get_run(run_id, tenant_id):
+    """Return the BillingRun with that id inside this tenant, or None."""
+    return db.session.scalar(db.select(BillingRun).filter_by(
+        id=run_id, tenant_id=tenant_id))
+
+
+@billing_runs_bp.route("", methods=["GET"])
+@jwt_required()
+def list_billing_runs():
+    tenant_id = current_tenant_id()
+    runs = db.session.scalars(
+        db.select(BillingRun).filter_by(tenant_id=tenant_id)
+        .order_by(BillingRun.year.desc(), BillingRun.month.desc())).all()
+    return jsonify([run.serialize() for run in runs]), 200
+
+
+@billing_runs_bp.route("/<int:run_id>", methods=["GET"])
+@jwt_required()
+def get_billing_run(run_id):
+    run = _get_run(run_id, current_tenant_id())
+    if run is None:
+        return jsonify({"message": "billing run not found"}), 404
+    return jsonify(run.serialize()), 200
+
+
 @billing_runs_bp.route("", methods=["POST"])
 @jwt_required()
 def close_month():
