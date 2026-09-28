@@ -77,8 +77,14 @@ def forgot_password():
         link = f"{frontend_url}/reset-password?token={token}"
         send_email(
             to=user.email,
-            subject="Reset your InvoiceOps password",
-            html=f"<p>Hi {user.full_name},</p><p>Click to reset your password (valid for 1 hour):</p><p><a href='{link}'>{link}</a></p>",
+            subject="Restablece tu contraseña de InvoiceOps",
+            html=(
+                f"<p>Hola {user.full_name},</p>"
+                "<p>Pulsa este enlace para crear una contraseña nueva "
+                "(caduca en 1 hora):</p>"
+                f"<p><a href='{link}'>{link}</a></p>"
+                "<p>Si no has pedido cambiarla, ignora este mensaje.</p>"
+            ),
         )
 
     return jsonify({"message": "If that email exists, a reset link has been sent"}), 200
