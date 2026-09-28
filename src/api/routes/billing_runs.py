@@ -1,6 +1,8 @@
+import csv
 from datetime import date
+from io import StringIO
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, Response, jsonify, request
 from flask_jwt_extended import jwt_required
 from sqlalchemy import extract
 
@@ -11,6 +13,14 @@ from api.routes.helpers import current_tenant_id
 from api.services.billing import build_proposal
 
 billing_runs_bp = Blueprint("billing_runs", __name__)
+
+CSV_COLUMNS = ["Cliente", "NIF", "Periodo", "Concepto", "Cantidad",
+               "Precio unitario", "Importe", "Base imponible", "IVA", "Total"]
+
+
+def _decimal_es(value):
+    """Decimal('580.00') -> '580,00' (Spanish decimal comma)."""
+    return f"{value:.2f}".replace(".", ",")
 
 
 def _parse_month(value):
@@ -86,6 +96,34 @@ def get_billing_run(run_id):
     if run is None:
         return jsonify({"message": "billing run not found"}), 404
     return jsonify(run.serialize()), 200
+
+
+@billing_runs_bp.route("/<int:run_id>/export.csv", methods=["GET"])
+@jwt_required()
+def export_billing_run_csv(run_id):
+    run = _get_run(run_id, current_tenant_id())
+    if run is None:
+        return jsonify({"message": "billing run not found"}), 404
+
+    period = f"{run.year}-{run.month:02d}"
+    buffer = StringIO()
+    writer = csv.writer(buffer, delimiter=";", lineterminator="\n")
+    writer.writerow(CSV_COLUMNS)
+    for proposal in run.proposals:
+        if proposal.status != "approved":
+            continue
+        for line in proposal.lines:
+            writer.writerow([
+                proposal.client.name, proposal.client.tax_id or "", period,
+                line.description, _decimal_es(line.quantity),
+                _decimal_es(line.unit_price), _decimal_es(line.amount),
+                _decimal_es(proposal.subtotal),
+                _decimal_es(proposal.vat_amount), _decimal_es(proposal.total),
+            ])
+
+    filename = f"facturacion-{period}.csv"
+    return Response(buffer.getvalue(), mimetype="text/csv", headers={
+        "Content-Disposition": f"attachment; filename={filename}"})
 
 
 @billing_runs_bp.route("", methods=["POST"])

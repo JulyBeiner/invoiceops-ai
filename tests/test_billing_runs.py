@@ -148,3 +148,29 @@ def test_close_month_flags_clients_without_activity(client):
     assert run["clients_without_activity"] == [
         {"client_id": idle_id, "client_name": "Cliente sin actividad"}]
     assert len(run["proposals"]) == 2
+
+
+def test_export_csv_contains_only_approved_proposals(client):
+    headers = auth_header(client)
+    setup_billable_client(client, headers)
+    run = client.post("/api/billing-runs", json={"month": "2026-09"},
+                      headers=headers).get_json()
+    url = f"/api/billing-runs/{run['id']}/export.csv"
+
+    response = client.get(url, headers=headers)
+    assert response.mimetype == "text/csv"
+    assert response.status_code == 200
+    assert response.get_data(as_text=True).splitlines() == [
+        "Cliente;NIF;Periodo;Concepto;Cantidad;Precio unitario;Importe;"
+        "Base imponible;IVA;Total"]
+
+    client.post(f"/api/proposals/{run['proposals'][0]['id']}/approve",
+                headers=headers)
+    rows = client.get(url, headers=headers).get_data(as_text=True).splitlines()
+    assert len(rows) == 3
+    assert rows[1] == ("Oficinas Sol;;2026-09;Cuota fija mensual;1,00;100,00;"
+                       "100,00;580,00;121,80;701,80")
+    assert rows[2].startswith("Oficinas Sol;;2026-09;Limpieza de oficina;12,00;")
+
+    headers_b = auth_header(client, email="b@demo.com", company="Empresa B")
+    assert client.get(url, headers=headers_b).status_code == 404
