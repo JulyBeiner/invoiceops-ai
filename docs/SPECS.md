@@ -216,13 +216,13 @@ All routes under `/api`. Routes marked 🔒 require `Authorization: Bearer <toke
 | POST   | `/activities` 🔒                   | client_id, service_id, performed_on, quantity | activity                      | US-07 |
 | POST   | `/activities/import` 🔒            | CSV file                                      | preview / import result       | US-08 |
 | GET    | `/billing-runs` 🔒                 | —                                             | list of runs                  | US-09 |
-| POST   | `/billing-runs` 🔒                 | month (YYYY-MM)                               | run + proposals               | US-09 |
+| POST   | `/billing-runs` 🔒                 | month (YYYY-MM)                               | run + proposals + clients_without_activity | US-09 |
 | GET    | `/billing-runs/<id>` 🔒            | —                                             | run + proposals               | US-09 |
 | GET    | `/proposals/<id>` 🔒               | —                                             | proposal + lines + activities | US-10 |
 | POST   | `/proposals/<id>/approve` 🔒       | —                                             | proposal                      | US-10 |
 | GET    | `/proposals/<id>/pdf` 🔒           | —                                             | PDF file                      | US-11 |
 | GET    | `/billing-runs/<id>/export.csv` 🔒 | —                                             | CSV file                      | US-12 |
-| GET    | `/dashboard` 🔒                    | —                                             | counters and totals           | US-13 |
+| GET    | `/dashboard` 🔒                    | ?month=YYYY-MM (default: current month)       | counters and totals           | US-13 |
 
 Errors always return JSON: `{"message": "..."}` with the proper HTTP status (400 invalid data, 401 not logged in, 403 not allowed, 404 not found, 409 conflict).
 
