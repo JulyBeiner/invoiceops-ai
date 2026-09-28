@@ -20,21 +20,21 @@ export const AuthLayout = () => {
                     </p>
                     <ul className="list-unstyled d-flex flex-column gap-3 mb-0">
                         <li>
-                            <i className="fa-solid fa-check me-2" style={{ color: "#e9a27a" }}></i>
+                            <i className="fa-solid fa-check me-2" style={{ color: "#c8f169" }}></i>
                             Una propuesta por cliente, con cada línea trazada a sus actividades
                         </li>
                         <li>
-                            <i className="fa-solid fa-check me-2" style={{ color: "#e9a27a" }}></i>
+                            <i className="fa-solid fa-check me-2" style={{ color: "#c8f169" }}></i>
                             PDF para tu cliente y CSV para Holded, Quipu o tu gestoría
                         </li>
                         <li>
-                            <i className="fa-solid fa-check me-2" style={{ color: "#e9a27a" }}></i>
+                            <i className="fa-solid fa-check me-2" style={{ color: "#c8f169" }}></i>
                             Cada empresa ve solo sus datos
                         </li>
                     </ul>
                 </div>
 
-                <p className="small mb-0" style={{ color: "#9fb1c4" }}>
+                <p className="small mb-0" style={{ color: "#94a0b2" }}>
                     InvoiceOps prepara la facturación; la factura legal la emite tu programa de
                     facturas de siempre.
                 </p>

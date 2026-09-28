@@ -10,6 +10,7 @@ import { ForgotPassword } from "./pages/ForgotPassword";
 import { ResetPassword } from "./pages/ResetPassword";
 import { AppLayout } from "./pages/AppLayout";
 import { Dashboard } from "./pages/Dashboard";
+import { Clients } from "./pages/Clients";
 
 const NotFound = () => (
   <div className="p-5">
@@ -28,7 +29,15 @@ export const router = createBrowserRouter(
       </Route>
       <Route element={<AppLayout />}>
         <Route path="/" element={<Dashboard />} />
+        <Route path="/clients" element={<Clients />} />
       </Route>
     </Route>
   )
 );
+
+
+
+
+
+
+
