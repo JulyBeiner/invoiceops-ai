@@ -40,6 +40,18 @@ def get_dashboard():
         .filter(Client.tenant_id == tenant_id, Client.is_archived.is_(False),
                 Contract.is_active.is_(True)))
 
+    contracted = db.session.scalars(
+        db.select(Client).join(Contract)
+        .filter(Client.tenant_id == tenant_id, Client.is_archived.is_(False),
+                Contract.is_active.is_(True))
+        .order_by(Client.name)).all()
+    with_activity = set(db.session.scalars(
+        db.select(Activity.client_id).filter_by(tenant_id=tenant_id)
+        .filter(extract("year", Activity.performed_on) == year,
+                extract("month", Activity.performed_on) == month)))
+    without_activity = [{"client_id": c.id, "client_name": c.name}
+                        for c in contracted if c.id not in with_activity]
+
     run = db.session.scalar(db.select(BillingRun).filter_by(
         tenant_id=tenant_id, year=year, month=month))
     counts = {"draft": 0, "approved": 0}
@@ -57,6 +69,7 @@ def get_dashboard():
                                           unbilled_only=True),
         },
         "billing_run": {"id": run.id, "status": run.status} if run else None,
+        "clients_without_activity": without_activity,
         "proposals": counts,
         "totals": {status: str(value) for status, value in totals.items()},
     }), 200

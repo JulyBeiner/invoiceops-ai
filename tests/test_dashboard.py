@@ -1,5 +1,5 @@
 from tests.test_billing_runs import setup_billable_client
-from tests.test_clients import auth_header
+from tests.test_clients import auth_header, create_client
 
 
 def test_dashboard_counts_activities_and_proposals(client):
@@ -17,6 +17,16 @@ def test_dashboard_counts_activities_and_proposals(client):
     assert body["billing_run"] is None
     assert body["proposals"] == {"draft": 0, "approved": 0}
     assert body["totals"] == {"draft": "0.00", "approved": "0.00"}
+    assert body["clients_without_activity"] == []
+
+    idle_id = create_client(
+        client, headers, name="Cliente sin actividad")["id"]
+    client.put(f"/api/clients/{idle_id}/contract",
+               json={"fixed_monthly_fee": "0"}, headers=headers)
+    body = client.get(url, headers=headers).get_json()
+    assert body["active_clients"] == 2
+    assert body["clients_without_activity"] == [
+        {"client_id": idle_id, "client_name": "Cliente sin actividad"}]
 
     run = client.post("/api/billing-runs", json={"month": "2026-09"},
                       headers=headers).get_json()
