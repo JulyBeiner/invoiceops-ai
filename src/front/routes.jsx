@@ -5,6 +5,7 @@ import {
 } from "react-router-dom";
 import { AuthLayout } from "./pages/AuthLayout";
 import { Login } from "./pages/Login";
+import { Register } from "./pages/Register";
 
 const NotFound = () => (
   <div className="p-5">
@@ -25,6 +26,7 @@ export const router = createBrowserRouter(
     <Route errorElement={<NotFound />}>
       <Route element={<AuthLayout />}>
         <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
       </Route>
       <Route path="/" element={<Placeholder />} />
     </Route>
