@@ -8,18 +8,12 @@ import { Login } from "./pages/Login";
 import { Register } from "./pages/Register";
 import { ForgotPassword } from "./pages/ForgotPassword";
 import { ResetPassword } from "./pages/ResetPassword";
+import { AppLayout } from "./pages/AppLayout";
+import { Dashboard } from "./pages/Dashboard";
 
 const NotFound = () => (
   <div className="p-5">
     <h1>Página no encontrada</h1>
-  </div>
-);
-
-// Temporary home until the app layout and dashboard exist.
-const Placeholder = () => (
-  <div className="p-5">
-    <h1>Inicio</h1>
-    <p>Has entrado. El menú y el panel llegan en el siguiente paso.</p>
   </div>
 );
 
@@ -32,7 +26,9 @@ export const router = createBrowserRouter(
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
       </Route>
-      <Route path="/" element={<Placeholder />} />
+      <Route element={<AppLayout />}>
+        <Route path="/" element={<Dashboard />} />
+      </Route>
     </Route>
   )
 );
