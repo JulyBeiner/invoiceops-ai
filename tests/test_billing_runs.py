@@ -131,3 +131,20 @@ def test_cannot_add_activity_to_a_closed_month(client):
     response = client.post("/api/activities", json={
         **payload, "performed_on": "2026-10-01"}, headers=headers)
     assert response.status_code == 201
+
+
+def test_close_month_flags_clients_without_activity(client):
+    headers = auth_header(client)
+    setup_billable_client(client, headers)
+    idle_id = create_client(
+        client, headers, name="Cliente sin actividad")["id"]
+    client.put(f"/api/clients/{idle_id}/contract",
+               json={"fixed_monthly_fee": "50"}, headers=headers)
+    create_client(client, headers, name="Cliente sin contrato")
+
+    run = client.post("/api/billing-runs", json={"month": "2026-09"},
+                      headers=headers).get_json()
+
+    assert run["clients_without_activity"] == [
+        {"client_id": idle_id, "client_name": "Cliente sin actividad"}]
+    assert len(run["proposals"]) == 2

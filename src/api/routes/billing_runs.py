@@ -105,6 +105,7 @@ def close_month():
                         "billing_run_id": existing.id}), 409
 
     run = BillingRun(tenant_id=tenant_id, year=year, month=month)
+    without_activity = []
     clients = db.session.scalars(
         db.select(Client).filter_by(tenant_id=tenant_id, is_archived=False)
         .order_by(Client.name)).all()
@@ -114,10 +115,15 @@ def close_month():
         if contract is None:
             continue
         activities = _unbilled_activities(tenant_id, client.id, year, month)
+        if not activities:
+            without_activity.append(
+                {"client_id": client.id, "client_name": client.name})
         proposal = _build_client_proposal(client, contract, activities)
         if proposal is not None:
             run.proposals.append(proposal)
 
     db.session.add(run)
     db.session.commit()
-    return jsonify(run.serialize()), 201
+    body = run.serialize()
+    body["clients_without_activity"] = without_activity
+    return jsonify(body), 201
