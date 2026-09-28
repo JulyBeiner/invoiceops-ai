@@ -1,9 +1,12 @@
-from flask import Blueprint, jsonify
+from io import BytesIO
+
+from flask import Blueprint, jsonify, send_file
 from flask_jwt_extended import jwt_required
 
 from api.extensions import db
-from api.models import BillingRun, Proposal
+from api.models import BillingRun, Proposal, Tenant
 from api.routes.helpers import current_tenant_id
+from api.services.pdf import build_proposal_pdf
 
 proposals_bp = Blueprint("proposals", __name__)
 
@@ -49,3 +52,18 @@ def approve_proposal(proposal_id):
         run.status = "closed"
     db.session.commit()
     return jsonify(_serialize_with_activities(proposal)), 200
+
+
+@proposals_bp.route("/<int:proposal_id>/pdf", methods=["GET"])
+@jwt_required()
+def download_proposal_pdf(proposal_id):
+    proposal = _get_proposal(proposal_id, current_tenant_id())
+    if proposal is None:
+        return jsonify({"message": "proposal not found"}), 404
+
+    run = proposal.billing_run
+    tenant = db.session.get(Tenant, run.tenant_id)
+    filename = f"propuesta-{run.year}-{run.month:02d}-{proposal.id}.pdf"
+    return send_file(BytesIO(build_proposal_pdf(tenant, proposal)),
+                     mimetype="application/pdf", as_attachment=True,
+                     download_name=filename)

@@ -50,3 +50,19 @@ def test_proposal_of_other_tenant_is_not_found(client):
                       headers=headers_b).status_code == 404
     assert client.post(f"/api/proposals/{proposal['id']}/approve",
                        headers=headers_b).status_code == 404
+
+
+def test_download_proposal_pdf(client):
+    headers = auth_header(client)
+    setup_billable_client(client, headers)
+    _, proposal = close_september(client, headers)
+    url = f"/api/proposals/{proposal['id']}/pdf"
+
+    response = client.get(url, headers=headers)
+    assert response.mimetype == "application/pdf"
+    assert response.status_code == 200
+    assert response.data.startswith(b"%PDF")
+    assert "propuesta" in response.headers["Content-Disposition"]
+
+    headers_b = auth_header(client, email="b@demo.com", company="Empresa B")
+    assert client.get(url, headers=headers_b).status_code == 404
