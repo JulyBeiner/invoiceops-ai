@@ -6,6 +6,8 @@ import {
 import { AuthLayout } from "./pages/AuthLayout";
 import { Login } from "./pages/Login";
 import { Register } from "./pages/Register";
+import { ForgotPassword } from "./pages/ForgotPassword";
+import { ResetPassword } from "./pages/ResetPassword";
 
 const NotFound = () => (
   <div className="p-5">
@@ -27,6 +29,8 @@ export const router = createBrowserRouter(
       <Route element={<AuthLayout />}>
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
       </Route>
       <Route path="/" element={<Placeholder />} />
     </Route>
