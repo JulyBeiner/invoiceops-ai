@@ -38,4 +38,5 @@ class User(TimestampMixin, db.Model):
             "email": self.email,
             "full_name": self.full_name,
             "role": self.role,
+            "tenant_name": self.tenant.name,
         }
