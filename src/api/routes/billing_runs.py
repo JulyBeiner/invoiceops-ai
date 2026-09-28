@@ -160,6 +160,10 @@ def close_month():
         if proposal is not None:
             run.proposals.append(proposal)
 
+    if not run.proposals:
+        return jsonify({"message": f"nothing to bill in {year}-{month:02d}",
+                        "clients_without_activity": without_activity}), 400
+
     db.session.add(run)
     db.session.commit()
     body = run.serialize()

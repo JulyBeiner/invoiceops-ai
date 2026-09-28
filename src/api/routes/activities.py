@@ -126,7 +126,10 @@ def _read_csv_rows(file_storage):
         text = file_storage.read().decode("utf-8-sig")
     except UnicodeDecodeError:
         return None, "file must be UTF-8 text"
-    reader = csv.DictReader(io.StringIO(text))
+    # Spanish Excel saves CSV with ";" — accept both separators.
+    first_line = text.split("\n", 1)[0]
+    delimiter = ";" if first_line.count(";") > first_line.count(",") else ","
+    reader = csv.DictReader(io.StringIO(text), delimiter=delimiter)
     fieldnames = [name.strip() for name in (reader.fieldnames or [])]
     missing = [name for name in CSV_COLUMNS if name not in fieldnames]
     if missing:

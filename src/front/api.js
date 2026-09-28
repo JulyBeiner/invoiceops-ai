@@ -47,3 +47,17 @@ export async function api(path, { method = "GET", body, raw = false } = {}) {
   }
   return data;
 }
+
+// Download a file (PDF, CSV) that needs the token: fetch it, then save it.
+export async function download(path, filename) {
+  const response = await api(path, { raw: true });
+  if (!response.ok) throw new ApiError(response.status, "download failed");
+  const url = URL.createObjectURL(await response.blob());
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}

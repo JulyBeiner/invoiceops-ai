@@ -94,3 +94,14 @@ def test_import_matches_names_loosely_and_reports_the_match(client):
                                  "service": "Limpieza de oficina"}
     assert second["resolved"]["client"] == "Oficinas Sol"
     assert third["status"] == "error" and "client" in third["message"]
+
+
+def test_import_accepts_semicolon_separated_files(client):
+    headers = auth_header(client)
+    setup_client_and_service(client, headers)
+    csv_text = ("external_id;client;service;performed_on;quantity\n"
+                "S1;Oficinas Sol;Limpieza de oficina;2026-09-10;2\n")
+
+    body = upload(client, headers, csv_text).get_json()
+
+    assert body["summary"] == {"ok": 1, "errors": 0, "duplicates": 0}

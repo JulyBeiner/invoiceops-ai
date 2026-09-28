@@ -81,10 +81,12 @@ def test_clients_with_nothing_to_bill_get_no_proposal(client):
 
     run_a = client.post("/api/billing-runs", json={"month": "2026-09"},
                         headers=headers_a).get_json()
-    run_b = client.post("/api/billing-runs", json={"month": "2026-09"},
-                        headers=headers_b).get_json()
+    response_b = client.post("/api/billing-runs", json={"month": "2026-09"},
+                             headers=headers_b)
     assert len(run_a["proposals"]) == 1
-    assert run_b["proposals"] == []
+    assert response_b.status_code == 400
+    assert "nothing to bill" in response_b.get_json()["message"]
+    assert client.get("/api/billing-runs", headers=headers_b).get_json() == []
 
 
 def test_list_and_get_billing_runs(client):
@@ -108,6 +110,7 @@ def test_list_and_get_billing_runs(client):
 def test_billing_run_of_other_tenant_is_not_found(client):
     headers_a = auth_header(client, email="a@demo.com", company="Empresa A")
     headers_b = auth_header(client, email="b@demo.com", company="Empresa B")
+    setup_billable_client(client, headers_a)
     run_id = client.post("/api/billing-runs", json={"month": "2026-09"},
                          headers=headers_a).get_json()["id"]
 
