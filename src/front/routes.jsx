@@ -11,6 +11,7 @@ import { ResetPassword } from "./pages/ResetPassword";
 import { AppLayout } from "./pages/AppLayout";
 import { Dashboard } from "./pages/Dashboard";
 import { Clients } from "./pages/Clients";
+import { Activities } from "./pages/Activities";
 
 const NotFound = () => (
   <div className="p-5">
@@ -30,14 +31,8 @@ export const router = createBrowserRouter(
       <Route element={<AppLayout />}>
         <Route path="/" element={<Dashboard />} />
         <Route path="/clients" element={<Clients />} />
+        <Route path="/activities" element={<Activities />} />
       </Route>
     </Route>
   )
 );
-
-
-
-
-
-
-

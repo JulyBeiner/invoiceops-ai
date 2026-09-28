@@ -75,3 +75,22 @@ def test_import_rejects_malformed_file(client):
     response = client.post(
         "/api/activities/import?commit=true", headers=headers)
     assert response.status_code == 400
+
+
+def test_import_matches_names_loosely_and_reports_the_match(client):
+    headers = auth_header(client)
+    setup_client_and_service(client, headers)
+    csv_text = HEADER + (
+        "A1,oficinas sol,LIMPIEZA OFICINA,2026-09-10,2\n"
+        "A2,Oficinas Sól S.L.,Limpieza de oficinas,2026-09-11,1\n"
+        "A3,Talleres Vega,Limpieza de oficina,2026-09-12,1\n"
+    )
+
+    body = upload(client, headers, csv_text).get_json()
+
+    assert body["summary"] == {"ok": 2, "errors": 1, "duplicates": 0}
+    first, second, third = body["rows"]
+    assert first["resolved"] == {"client": "Oficinas Sol",
+                                 "service": "Limpieza de oficina"}
+    assert second["resolved"]["client"] == "Oficinas Sol"
+    assert third["status"] == "error" and "client" in third["message"]

@@ -1,7 +1,10 @@
 import csv
 import io
+import re
+import unicodedata
 from datetime import date
 from decimal import Decimal, InvalidOperation
+from difflib import get_close_matches
 
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import jwt_required
@@ -89,6 +92,32 @@ def list_activities():
 
 
 CSV_COLUMNS = ("external_id", "client", "service", "performed_on", "quantity")
+STOPWORDS = {"de", "del", "la", "el", "los", "las", "y", "sl", "sa", "slu"}
+
+
+def _normalize(text):
+    """'Limpieza de Oficinas S.L.' -> 'limpieza oficinas' (no accents, case, filler)."""
+    ascii_text = unicodedata.normalize("NFKD", text or "").encode(
+        "ascii", "ignore").decode()
+    words = re.findall(r"[a-z0-9]+", ascii_text.lower())
+    return " ".join(word for word in words if word not in STOPWORDS)
+
+
+def _catalog(items):
+    """{normalized name: item} for clients or services."""
+    return {_normalize(item.name): item for item in items}
+
+
+def _match(name, catalog):
+    """Find the item whose name means the same: exact after normalizing,
+    else the single close match (typos); None if nothing or ambiguous."""
+    key = _normalize(name)
+    if not key:
+        return None
+    if key in catalog:
+        return catalog[key]
+    close = get_close_matches(key, list(catalog), n=2, cutoff=0.8)
+    return catalog[close[0]] if len(close) == 1 else None
 
 
 def _read_csv_rows(file_storage):
@@ -116,10 +145,10 @@ def import_activities():
     if error:
         return jsonify({"message": error}), 400
 
-    clients = {c.name.lower(): c.id for c in db.session.scalars(
-        db.select(Client).filter_by(tenant_id=tenant_id, is_archived=False))}
-    services = {s.name.lower(): s.id for s in db.session.scalars(
-        db.select(Service).filter_by(tenant_id=tenant_id))}
+    clients = _catalog(db.session.scalars(
+        db.select(Client).filter_by(tenant_id=tenant_id, is_archived=False)))
+    services = _catalog(db.session.scalars(
+        db.select(Service).filter_by(tenant_id=tenant_id)))
     existing_ids = set(db.session.scalars(db.select(Activity.external_id).where(
         Activity.tenant_id == tenant_id, Activity.external_id.is_not(None))))
 
@@ -129,9 +158,11 @@ def import_activities():
         if external_id and (external_id in existing_ids or external_id in seen):
             preview.append({"line": line, "status": "duplicate", "data": row})
             continue
+        matched_client = _match(row.get("client"), clients)
+        matched_service = _match(row.get("service"), services)
         data = {
-            "client_id": clients.get((row.get("client") or "").strip().lower()),
-            "service_id": services.get((row.get("service") or "").strip().lower()),
+            "client_id": matched_client.id if matched_client else None,
+            "service_id": matched_service.id if matched_service else None,
             "performed_on": (row.get("performed_on") or "").strip(),
             "quantity": (row.get("quantity") or "").strip(),
             "external_id": external_id,
@@ -144,7 +175,9 @@ def import_activities():
         if external_id:
             seen.add(external_id)
         to_save.append(activity)
-        preview.append({"line": line, "status": "ok", "data": row})
+        preview.append({"line": line, "status": "ok", "data": row,
+                        "resolved": {"client": matched_client.name,
+                                     "service": matched_service.name}})
 
     commit = request.args.get("commit") == "true"
     if commit:
