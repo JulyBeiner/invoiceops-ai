@@ -5,6 +5,76 @@ const emptyClient = { name: "", tax_id: "", email: "" };
 const toApi = (value) => String(value ?? "").trim().replace(",", ".");
 const toInput = (value) => (value == null ? "" : String(value).replace(".", ","));
 
+// Catalog of standard services of the niche: tick the ones you offer and
+// they are created in one go. Existing ones are shown ticked and disabled.
+const CatalogPicker = ({ onCreated, say }) => {
+    const [open, setOpen] = useState(false);
+    const [items, setItems] = useState([]);
+    const [chosen, setChosen] = useState([]);
+    const [saving, setSaving] = useState(false);
+
+    useEffect(() => {
+        if (open) api("/services/catalog").then((list) => { setItems(list); setChosen([]); });
+    }, [open]);
+
+    const toggle = (name) => setChosen(chosen.includes(name) ? chosen.filter((n) => n !== name) : [...chosen, name]);
+
+    const create = async () => {
+        setSaving(true);
+        try {
+            const result = await api("/services/catalog", { method: "POST", body: { names: chosen } });
+            const n = result.created.length;
+            say("success", `${n} servicio${n === 1 ? "" : "s"} creado${n === 1 ? "" : "s"}. Ponles precio en el contrato.`);
+            setOpen(false);
+            onCreated();
+        } catch (err) {
+            say("danger", errorText(err));
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    if (!open) {
+        return (
+            <button type="button" className="btn btn-link btn-sm p-0" onClick={() => setOpen(true)}>
+                <i className="fa-solid fa-list-check me-2"></i>Añadir del catálogo del sector
+            </button>
+        );
+    }
+
+    return (
+        <div className="d-flex flex-column gap-2">
+            <span className="io-muted" style={{ fontSize: 13 }}>Marca los servicios que ofreces y se crean de golpe.</span>
+            <div className="row g-1">
+                {items.map((item, index) => (
+                    <div key={item.name} className="col-6">
+                        <div className="form-check">
+                            <input
+                                id={`cat-${index}`}
+                                type="checkbox"
+                                className="form-check-input"
+                                disabled={item.exists}
+                                checked={item.exists || chosen.includes(item.name)}
+                                onChange={() => toggle(item.name)}
+                            />
+                            <label htmlFor={`cat-${index}`} className="form-check-label" style={{ fontSize: 14 }}>
+                                {item.name} <span className="io-muted">/ {item.unit}</span>
+                                {item.exists && <span className="io-badge io-badge-gray ms-1">ya lo tienes</span>}
+                            </label>
+                        </div>
+                    </div>
+                ))}
+            </div>
+            <div className="d-flex gap-2">
+                <button type="button" className="btn btn-primary btn-sm" disabled={saving || chosen.length === 0} onClick={create}>
+                    {saving ? "Creando…" : chosen.length === 0 ? "Crear servicios" : `Crear ${chosen.length} servicio${chosen.length === 1 ? "" : "s"}`}
+                </button>
+                <button type="button" className="btn btn-outline-secondary btn-sm" onClick={() => setOpen(false)}>Cancelar</button>
+            </div>
+        </div>
+    );
+};
+
 // Right panel: client data, contract editor, services, archive.
 const ClientDetail = ({ detail, services, onChanged, onServiceCreated, say }) => {
     const [editing, setEditing] = useState(false);
@@ -129,7 +199,7 @@ const ClientDetail = ({ detail, services, onChanged, onServiceCreated, say }) =>
                 </div>
 
                 <span className="io-muted fw-semibold" style={{ fontSize: 13 }}>Precio por servicio</span>
-                {services.length === 0 && <span className="io-muted" style={{ fontSize: 13 }}>Aún no hay servicios. Crea el primero abajo.</span>}
+                {services.length === 0 && <span className="io-muted" style={{ fontSize: 13 }}>Aún no hay servicios. Añádelos del catálogo o crea el primero abajo.</span>}
                 {services.map((service) => (
                     <div key={service.id} className="d-flex align-items-center gap-2">
                         <label className="flex-grow-1 mb-0" htmlFor={`price-${service.id}`} style={{ fontSize: 14 }}>
@@ -163,6 +233,7 @@ const ClientDetail = ({ detail, services, onChanged, onServiceCreated, say }) =>
                 </div>
                 <button type="submit" className="btn btn-outline-secondary">Añadir</button>
             </form>
+            <CatalogPicker onCreated={onServiceCreated} say={say} />
 
             <div className="pt-3 border-top">
                 <button type="button" className="btn btn-link btn-sm p-0" style={{ color: detail.is_archived ? "var(--io-navy)" : "#9b2c1b" }} onClick={toggleArchive}>
