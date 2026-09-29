@@ -48,6 +48,7 @@ Roles: **owner** (creates the company), **admin** (runs billing), **user** (any 
 - A contract belongs to one client; one active contract per client.
 - Prices have 2 decimals; VAT rate defaults to 21 %.
 - A service without a price in the contract cannot be billed.
+- A catalog of standard services of the niche can be added in one go; existing ones (by normalized name) are skipped.
 
 ### Activities
 
@@ -61,6 +62,7 @@ Roles: **owner** (creates the company), **admin** (runs billing), **user** (any 
 - Shows a preview with errors per row before importing.
 - Rows with an already imported external id are skipped (no duplicates).
 - Malformed file → clear error, nothing imported.
+- Accepts `,` or `;` as separator, Spanish decimals (`3,5`) and dates in `DD/MM/YYYY` or `YYYY-MM-DD`; client and service names are matched loosely (accents, case, filler words, one close typo).
 
 ### Month close
 
@@ -69,7 +71,8 @@ Roles: **owner** (creates the company), **admin** (runs billing), **user** (any 
 - One proposal per client with activity or with a fixed fee.
 - Every proposal line links to the activities it comes from.
 - Totals include subtotal, VAT and total.
-- Running the close twice for the same month does not duplicate proposals.
+- Running the close twice for the same month does not duplicate proposals (409).
+- A month with nothing to bill is not closed: error 400 with the list of clients without activity.
 
 **US-10** As an admin, I can review a proposal, see the activities behind each line, and approve it.
 
@@ -82,6 +85,10 @@ Roles: **owner** (creates the company), **admin** (runs billing), **user** (any 
 - PDF contains company data, lines, totals and an annex with the activity dates.
 
 **US-12** As an admin, I can export the approved proposals of a month as CSV so that I can import them into my invoicing tool.
+
+### Settings
+
+**US-13b** As an owner, I can edit my company's name and tax id so that they appear as issuer on the PDF proposals.
 
 ### Dashboard
 
@@ -202,6 +209,8 @@ All routes under `/api`. Routes marked 🔒 require `Authorization: Bearer <toke
 | POST   | `/auth/register`                   | company_name, full_name, email, password      | user + token                  | US-01 |
 | POST   | `/auth/login`                      | email, password                               | token                         | US-02 |
 | GET    | `/auth/me` 🔒                      | —                                             | current user                  | US-02 |
+| GET    | `/auth/tenant` 🔒                  | —                                             | company `{id, name, tax_id}`  | US-13b |
+| PUT    | `/auth/tenant` 🔒                  | name, tax_id                                  | company                       | US-13b |
 | POST   | `/auth/forgot-password`            | email                                         | generic message               | US-03 |
 | POST   | `/auth/reset-password`             | token, password                               | message                       | US-04 |
 | GET    | `/clients` 🔒                      | —                                             | list of clients               | US-05 |
@@ -211,29 +220,38 @@ All routes under `/api`. Routes marked 🔒 require `Authorization: Bearer <toke
 | DELETE | `/clients/<id>` 🔒                 | —                                             | archives the client           | US-05 |
 | GET    | `/services` 🔒                     | —                                             | list of services              | US-06 |
 | POST   | `/services` 🔒                     | name, unit                                    | service                       | US-06 |
+| GET    | `/services/catalog` 🔒             | —                                             | standard services + `exists`  | US-06 |
+| POST   | `/services/catalog` 🔒             | names[]                                       | `{created, skipped}`          | US-06 |
 | PUT    | `/clients/<id>/contract` 🔒        | fixed_monthly_fee, vat_rate, prices[]         | contract                      | US-06 |
 | GET    | `/activities` 🔒                   | ?month=YYYY-MM&client_id                      | list                          | US-07 |
 | POST   | `/activities` 🔒                   | client_id, service_id, performed_on, quantity | activity                      | US-07 |
-| POST   | `/activities/import` 🔒            | CSV file                                      | preview / import result       | US-08 |
+| POST   | `/activities/import` 🔒            | CSV file, `?commit=true` to save              | preview / import result       | US-08 |
 | GET    | `/billing-runs` 🔒                 | —                                             | list of runs                  | US-09 |
-| POST   | `/billing-runs` 🔒                 | month (YYYY-MM)                               | run + proposals + clients_without_activity | US-09 |
+| POST   | `/billing-runs` 🔒                 | month (YYYY-MM)                               | run + proposals + clients_without_activity; 400 if nothing to bill, 409 if already closed | US-09 |
 | GET    | `/billing-runs/<id>` 🔒            | —                                             | run + proposals               | US-09 |
 | GET    | `/proposals/<id>` 🔒               | —                                             | proposal + lines + activities | US-10 |
 | POST   | `/proposals/<id>/approve` 🔒       | —                                             | proposal                      | US-10 |
 | GET    | `/proposals/<id>/pdf` 🔒           | —                                             | PDF file                      | US-11 |
 | GET    | `/billing-runs/<id>/export.csv` 🔒 | —                                             | CSV file                      | US-12 |
-| GET    | `/dashboard` 🔒                    | ?month=YYYY-MM (default: current month)       | counters and totals           | US-13 |
+| GET    | `/dashboard` 🔒                    | ?month=YYYY-MM (default: current month)       | `{month, active_clients, activities: {total, unbilled}, billing_run, clients_without_activity, proposals: {draft, approved}, totals: {draft, approved}}` | US-13 |
 
 Errors always return JSON: `{"message": "..."}` with the proper HTTP status (400 invalid data, 401 not logged in, 403 not allowed, 404 not found, 409 conflict).
 
-## 4. Screens (wireframes to sketch)
+## 4. Screens
 
 1. Login / register / forgot password
 2. Dashboard
-3. Clients list + client detail with contract
+3. Clients list + client detail with contract and service catalog
 4. Activities list + add activity + CSV import
 5. Month close: run list → proposal detail with lines and activity annex, approve, PDF
+6. Settings: company name and tax id
 
-## 5. Tech stack
+Design notes and the final look: `docs/DESIGN.md`.
 
-React 18 + Vite, Context API with Flux-style store (reducer + actions) · Flask 3 + SQLAlchemy 2 + Alembic · PostgreSQL 16 · JWT (flask-jwt-extended) · bcrypt · pytest · third-party APIs: email delivery (password reset) and, as stretch, an AI API for text-to-activities · deployed on Render.
+## 5. Demo data
+
+`pipenv run seed` loads the demo company (`src/api/commands.py`): Limpiezas Aurora S.L. (owner `july@limpiezasaurora.es` / `Aurora2026!`), three services, four clients with contracts (one with a contract and no activity), 38 activities in September 2026 and 12 in early October. It does nothing if the company already exists; `pipenv run seed --reset` deletes it and loads it again.
+
+## 6. Tech stack
+
+React 18 + Vite, Context API with Flux-style store (reducer + actions) · Flask 3 + SQLAlchemy 2 + Alembic · PostgreSQL 16 · JWT (flask-jwt-extended) · bcrypt · pytest · third-party APIs: email delivery (password reset) and, as stretch, an AI API for text-to-activities · fpdf2 for the PDF · deployed on Render.
