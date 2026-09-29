@@ -2,7 +2,7 @@ import csv
 import io
 import re
 import unicodedata
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from difflib import get_close_matches
 
@@ -17,6 +17,21 @@ from api.routes.helpers import current_tenant_id
 activities_bp = Blueprint("activities", __name__)
 
 
+def _parse_date(value):
+    """Accept ISO (2026-09-10) and Spanish (10/09/2026) dates."""
+    text = str(value or "").strip()
+    try:
+        return date.fromisoformat(text)
+    except ValueError:
+        return datetime.strptime(text, "%d/%m/%Y").date()
+
+
+def _parse_quantity(value):
+    """Accept a Spanish decimal comma: '3,5' -> Decimal('3.50')."""
+    text = str(value if value is not None else "").strip().replace(",", ".")
+    return Decimal(text).quantize(Decimal("0.01"))
+
+
 def _parse_activity(data, tenant_id):
     """Validate one activity's data. Return (Activity, None) or (None, error)."""
     client = db.session.scalar(db.select(Client).filter_by(
@@ -28,15 +43,15 @@ def _parse_activity(data, tenant_id):
     if service is None:
         return None, "service not found"
     try:
-        performed_on = date.fromisoformat(str(data.get("performed_on")))
+        performed_on = _parse_date(data.get("performed_on"))
     except ValueError:
-        return None, "performed_on must be a date (YYYY-MM-DD)"
+        return None, "performed_on must be a date (YYYY-MM-DD or DD/MM/YYYY)"
     if db.session.scalar(db.select(BillingRun).filter_by(
             tenant_id=tenant_id, year=performed_on.year,
             month=performed_on.month)):
         return None, f"{performed_on:%Y-%m} is already closed"
     try:
-        quantity = Decimal(str(data.get("quantity"))).quantize(Decimal("0.01"))
+        quantity = _parse_quantity(data.get("quantity"))
     except InvalidOperation:
         return None, "quantity must be a number"
     if quantity <= 0:

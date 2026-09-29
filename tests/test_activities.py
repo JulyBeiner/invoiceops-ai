@@ -41,7 +41,7 @@ def test_create_activity_rejects_bad_data(client):
 
     assert client.post("/api/activities", json={**base, "quantity": 0},
                        headers=headers).status_code == 400
-    assert client.post("/api/activities", json={**base, "performed_on": "15/09/2026"},
+    assert client.post("/api/activities", json={**base, "performed_on": "2026-13-01"},
                        headers=headers).status_code == 400
     assert client.post("/api/activities", json={**base, "service_id": 9999},
                        headers=headers).status_code == 400
@@ -58,9 +58,12 @@ def test_external_id_is_unique_per_tenant(client):
                  "performed_on": "2026-09-15", "quantity": 1, "external_id": "ROW-1"}
     payload_b = {**payload_a, "client_id": client_b, "service_id": service_b}
 
-    assert client.post("/api/activities", json=payload_a, headers=headers_a).status_code == 201
-    assert client.post("/api/activities", json=payload_a, headers=headers_a).status_code == 409
-    assert client.post("/api/activities", json=payload_b, headers=headers_b).status_code == 201
+    assert client.post("/api/activities", json=payload_a,
+                       headers=headers_a).status_code == 201
+    assert client.post("/api/activities", json=payload_a,
+                       headers=headers_a).status_code == 409
+    assert client.post("/api/activities", json=payload_b,
+                       headers=headers_b).status_code == 201
 
 
 def test_activities_are_isolated_per_tenant(client):
@@ -72,4 +75,5 @@ def test_activities_are_isolated_per_tenant(client):
     client.post("/api/activities", json=payload, headers=headers_a)
 
     assert client.get("/api/activities", headers=headers_b).get_json() == []
-    assert client.post("/api/activities", json=payload, headers=headers_b).status_code == 400
+    assert client.post("/api/activities", json=payload,
+                       headers=headers_b).status_code == 400

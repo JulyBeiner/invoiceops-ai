@@ -105,3 +105,19 @@ def test_import_accepts_semicolon_separated_files(client):
     body = upload(client, headers, csv_text).get_json()
 
     assert body["summary"] == {"ok": 1, "errors": 0, "duplicates": 0}
+
+
+def test_import_accepts_spanish_decimals_and_dates(client):
+    headers = auth_header(client)
+    setup_client_and_service(client, headers)
+    csv_text = ("external_id;client;service;performed_on;quantity\n"
+                "E1;Oficinas Sol;Limpieza de oficina;10/09/2026;3,5\n"
+                "E2;Oficinas Sol;Limpieza de oficina;32/09/2026;1\n")
+
+    body = upload(client, headers, csv_text, commit=True).get_json()
+
+    assert body["summary"] == {"ok": 1, "errors": 1, "duplicates": 0}
+    assert body["rows"][1]["status"] == "error"
+    saved = client.get("/api/activities", headers=headers).get_json()
+    assert [(a["performed_on"], a["quantity"])
+            for a in saved] == [("2026-09-10", "3.50")]
