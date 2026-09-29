@@ -69,3 +69,24 @@ def test_register_rejects_invalid_email(client):
     response = register(client, email="tu_email")
 
     assert response.status_code == 400
+
+
+def test_tenant_settings_can_be_read_and_updated(client):
+    token = register(client).get_json()["token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    response = client.get("/api/auth/tenant", headers=headers)
+    assert response.status_code == 200
+    assert response.get_json()["name"] == "Limpiezas Demo"
+    assert response.get_json()["tax_id"] is None
+
+    response = client.put("/api/auth/tenant", json={
+        "name": "Limpiezas Demo S.L.", "tax_id": "B11111111"}, headers=headers)
+    assert response.status_code == 200
+    assert response.get_json()["tax_id"] == "B11111111"
+    assert client.get("/api/auth/me", headers=headers).get_json()[
+        "tenant_name"] == "Limpiezas Demo S.L."
+
+    response = client.put("/api/auth/tenant",
+                          json={"name": "  "}, headers=headers)
+    assert response.status_code == 400

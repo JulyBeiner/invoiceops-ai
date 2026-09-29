@@ -61,6 +61,30 @@ def me():
     return jsonify(user.serialize()), 200
 
 
+@auth_bp.route("/tenant", methods=["GET"])
+@jwt_required()
+def get_tenant():
+    """The company of the logged-in user (name and NIF, shown on the PDF)."""
+    user = db.session.get(User, int(get_jwt_identity()))
+    return jsonify(user.tenant.serialize()), 200
+
+
+@auth_bp.route("/tenant", methods=["PUT"])
+@jwt_required()
+def update_tenant():
+    user = db.session.get(User, int(get_jwt_identity()))
+    data = request.get_json(silent=True) or {}
+    name = (data.get("name") or "").strip()
+    if not name:
+        return jsonify({"message": "name is required"}), 400
+
+    tenant = user.tenant
+    tenant.name = name
+    tenant.tax_id = (data.get("tax_id") or "").strip() or None
+    db.session.commit()
+    return jsonify(tenant.serialize()), 200
+
+
 def _reset_serializer():
     return URLSafeTimedSerializer(current_app.config["SECRET_KEY"], salt="password-reset")
 
