@@ -14,6 +14,7 @@ import { Clients } from "./pages/Clients";
 import { Activities } from "./pages/Activities";
 import { Billing } from "./pages/Billing";
 import { Proposal } from "./pages/Proposal";
+import { Settings } from "./pages/Settings";
 
 const NotFound = () => (
   <div className="p-5">
@@ -36,6 +37,7 @@ export const router = createBrowserRouter(
         <Route path="/activities" element={<Activities />} />
         <Route path="/billing" element={<Billing />} />
         <Route path="/proposals/:id" element={<Proposal />} />
+        <Route path="/settings" element={<Settings />} />
       </Route>
     </Route>
   )

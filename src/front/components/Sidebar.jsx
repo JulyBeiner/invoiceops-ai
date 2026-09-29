@@ -6,6 +6,7 @@ const links = [
     { to: "/clients", label: "Clientes", icon: "fa-users" },
     { to: "/activities", label: "Actividades", icon: "fa-list-check" },
     { to: "/billing", label: "Cierre de mes", icon: "fa-calendar-check" },
+    { to: "/settings", label: "Ajustes", icon: "fa-gear" },
 ];
 
 const initialsOf = (name) =>
