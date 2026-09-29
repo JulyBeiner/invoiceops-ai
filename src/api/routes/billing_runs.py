@@ -147,18 +147,22 @@ def close_month():
     clients = db.session.scalars(
         db.select(Client).filter_by(tenant_id=tenant_id, is_archived=False)
         .order_by(Client.name)).all()
-    for client in clients:
-        contract = db.session.scalar(db.select(Contract).filter_by(
-            client_id=client.id, is_active=True))
-        if contract is None:
-            continue
-        activities = _unbilled_activities(tenant_id, client.id, year, month)
-        if not activities:
-            without_activity.append(
-                {"client_id": client.id, "client_name": client.name})
-        proposal = _build_client_proposal(client, contract, activities)
-        if proposal is not None:
-            run.proposals.append(proposal)
+    # no_autoflush: the run is added at the end, so the proposals being built
+    # must not be flushed by the queries inside the loop.
+    with db.session.no_autoflush:
+        for client in clients:
+            contract = db.session.scalar(db.select(Contract).filter_by(
+                client_id=client.id, is_active=True))
+            if contract is None:
+                continue
+            activities = _unbilled_activities(
+                tenant_id, client.id, year, month)
+            if not activities:
+                without_activity.append(
+                    {"client_id": client.id, "client_name": client.name})
+            proposal = _build_client_proposal(client, contract, activities)
+            if proposal is not None:
+                run.proposals.append(proposal)
 
     if not run.proposals:
         return jsonify({"message": f"nothing to bill in {year}-{month:02d}",
