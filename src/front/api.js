@@ -23,6 +23,24 @@ export const errorText = (error) => {
   return byStatus[error.status] || "Algo ha fallado. Inténtalo de nuevo.";
 };
 
+// Activity endpoints (manual form, CSV import, AI capture) share these messages.
+export const activityError = (message) => {
+  const m = message || "";
+  if (m.includes("client not found")) return "El cliente no existe: revisa el nombre.";
+  if (m.includes("service not found")) return "El servicio no existe: revisa el nombre.";
+  if (m.includes("performed_on")) return "Fecha no válida: usa DD/MM/AAAA o AAAA-MM-DD.";
+  if (m.includes("already closed")) return "Ese mes ya está cerrado.";
+  if (m.includes("quantity")) return "Cantidad no válida: debe ser mayor que 0.";
+  return m || "Fila no válida.";
+};
+
+// AI endpoints: 503 = no key configured on the server, 502 = the provider failed.
+export const aiError = (error) => {
+  if (error.status === 503) return "La IA no está configurada en este servidor.";
+  if (error.status === 502) return "La IA no ha respondido bien. Inténtalo de nuevo en un momento.";
+  return errorText(error);
+};
+
 // api("/clients") → GET; api("/clients", { method: "POST", body: {...} }) → POST with JSON.
 // raw: true returns the Response as is (for PDF and CSV downloads).
 export async function api(path, { method = "GET", body, raw = false } = {}) {

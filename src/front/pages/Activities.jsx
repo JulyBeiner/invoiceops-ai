@@ -1,19 +1,9 @@
 import { useEffect, useState } from "react";
-import { api, errorText } from "../api";
+import { activityError, api, errorText } from "../api";
 import { date, monthLabel, number, thisMonth } from "../format";
+import { AiCapture } from "../components/AiCapture";
 
 const today = () => new Date().toISOString().slice(0, 10);
-
-// API messages (English) -> user text (Spanish)
-const activityError = (message) => {
-  const m = message || "";
-  if (m.includes("client not found")) return "El cliente no existe: revisa el nombre.";
-  if (m.includes("service not found")) return "El servicio no existe: revisa el nombre.";
-  if (m.includes("performed_on")) return "Fecha no válida: usa DD/MM/AAAA o AAAA-MM-DD.";
-  if (m.includes("already closed")) return "Ese mes ya está cerrado.";
-  if (m.includes("quantity")) return "Cantidad no válida: debe ser mayor que 0.";
-  return m || "Fila no válida.";
-};
 
 const ImportDialog = ({ onClose, onImported, say }) => {
   const [file, setFile] = useState(null);
@@ -136,6 +126,7 @@ export const Activities = () => {
   const [form, setForm] = useState({ client_id: "", service_id: "", performed_on: today(), quantity: "1", external_id: "" });
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [capturing, setCapturing] = useState(false);
   const [notice, setNotice] = useState(null);
 
   const say = (kind, text) => {
@@ -182,12 +173,19 @@ export const Activities = () => {
           <h1>Actividades</h1>
           <p>{monthLabel(month)} · {activities.length} registradas · {pending} pendientes de facturar</p>
         </div>
-        <button type="button" className="btn btn-outline-secondary" onClick={() => setImporting(true)}>
-          <i className="fa-solid fa-upload me-2"></i>Importar CSV
-        </button>
+        <div className="d-flex gap-2">
+          <button type="button" className="btn btn-outline-secondary" onClick={() => setImporting(true)}>
+            <i className="fa-solid fa-upload me-2"></i>Importar CSV
+          </button>
+          <button type="button" className="btn btn-primary" onClick={() => setCapturing(true)}>
+            <i className="fa-solid fa-wand-magic-sparkles me-2"></i>Sugerir con IA
+          </button>
+        </div>
       </div>
 
       {notice && <div className={`alert alert-${notice.kind} py-2 mb-0`} role="alert">{notice.text}</div>}
+
+      {capturing && <AiCapture clients={clients} services={services} say={say} onCreated={load} onClose={() => setCapturing(false)} />}
 
       <form onSubmit={add} className="card p-3 d-flex flex-row gap-2 align-items-end flex-wrap">
         <div className="flex-grow-1">
