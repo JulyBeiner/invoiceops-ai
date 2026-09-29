@@ -9,7 +9,7 @@ const activityError = (message) => {
   const m = message || "";
   if (m.includes("client not found")) return "El cliente no existe: revisa el nombre.";
   if (m.includes("service not found")) return "El servicio no existe: revisa el nombre.";
-  if (m.includes("performed_on")) return "Fecha no válida: usa AAAA-MM-DD.";
+  if (m.includes("performed_on")) return "Fecha no válida: usa DD/MM/AAAA o AAAA-MM-DD.";
   if (m.includes("already closed")) return "Ese mes ya está cerrado.";
   if (m.includes("quantity")) return "Cantidad no válida: debe ser mayor que 0.";
   return m || "Fila no válida.";
