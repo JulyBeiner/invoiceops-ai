@@ -43,3 +43,52 @@ def test_services_are_isolated_per_tenant(client):
     response = client.get("/api/services", headers=headers_b)
 
     assert response.get_json() == []
+
+
+def test_catalog_lists_standard_services_and_marks_existing(client):
+    headers = auth_header(client)
+    client.post("/api/services", json={"name": "Limpieza Oficina", "unit": "hora"},
+                headers=headers)
+
+    response = client.get("/api/services/catalog", headers=headers)
+
+    assert response.status_code == 200
+    catalog = response.get_json()
+    assert len(catalog) == 10
+    by_name = {item["name"]: item for item in catalog}
+    assert by_name["Limpieza de oficina"] == {
+        "name": "Limpieza de oficina", "unit": "hora", "exists": True}
+    assert by_name["Abrillantado de suelos"]["unit"] == "m²"
+    assert by_name["Abrillantado de suelos"]["exists"] is False
+
+
+def test_catalog_creates_selected_services_and_skips_existing(client):
+    headers = auth_header(client)
+    client.post("/api/services", json={"name": "Limpieza Oficina", "unit": "hora"},
+                headers=headers)
+
+    response = client.post(
+        "/api/services/catalog",
+        json={"names": ["Limpieza de oficina", "Jardinería", "Desinfección"]},
+        headers=headers,
+    )
+
+    assert response.status_code == 201
+    body = response.get_json()
+    assert [(s["name"], s["unit"]) for s in body["created"]] == [
+        ("Jardinería", "hora"), ("Desinfección", "servicio")]
+    assert body["skipped"] == ["Limpieza de oficina"]
+    names = [s["name"]
+             for s in client.get("/api/services", headers=headers).get_json()]
+    assert names == ["Desinfección", "Jardinería", "Limpieza Oficina"]
+
+
+def test_catalog_rejects_unknown_names(client):
+    headers = auth_header(client)
+
+    response = client.post(
+        "/api/services/catalog", json={"names": ["Limpieza espacial"]},
+        headers=headers)
+
+    assert response.status_code == 400
+    assert "Limpieza espacial" in response.get_json()["message"]
