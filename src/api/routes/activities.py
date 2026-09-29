@@ -13,6 +13,7 @@ from sqlalchemy import extract
 from api.extensions import db
 from api.models import Activity, BillingRun, Client, Service
 from api.routes.helpers import current_tenant_id
+from api.services import ai
 
 activities_bp = Blueprint("activities", __name__)
 
@@ -208,3 +209,106 @@ def import_activities():
         "duplicates": sum(1 for r in preview if r["status"] == "duplicate"),
     }
     return jsonify({"committed": commit, "summary": summary, "rows": preview}), 200
+
+
+# --- AI capture: the AI reads and proposes; the person confirms ----------
+
+SUGGEST_SYSTEM = (
+    "Eres el asistente de InvoiceOps, una aplicación de facturación para "
+    "empresas de limpieza y mantenimiento en España. Lees mensajes de "
+    "trabajadores (WhatsApp, partes de trabajo, notas) y extraes las "
+    "actividades realizadas: para qué cliente, qué servicio, qué día y qué "
+    "cantidad (horas, unidades, servicios). Nunca inventes datos: si algo no "
+    "está en el texto, déjalo vacío. Nunca calcules precios ni importes. "
+    "Responde SOLO con JSON válido, sin texto antes ni después."
+)
+
+WEEKDAYS_ES = ("lunes", "martes", "miércoles", "jueves", "viernes",
+               "sábado", "domingo")
+
+
+def _suggest_prompt(text, clients, services, today):
+    """Build the user prompt: today's date, the tenant's names and the schema."""
+    client_names = "\n".join(f"- {c.name}" for c in clients) or "- (ninguno)"
+    service_names = "\n".join(
+        f"- {s.name} (unidad: {s.unit})" for s in services) or "- (ninguno)"
+    return (
+        f"Hoy es {WEEKDAYS_ES[today.weekday()]} {today:%d/%m/%Y}. "
+        "Si el texto dice 'ayer', 'el lunes', etc., calcula la fecha real "
+        "(la más reciente que ya haya pasado).\n\n"
+        f"Clientes de la empresa (usa estos nombres exactos si coinciden):\n"
+        f"{client_names}\n\n"
+        f"Servicios de la empresa (usa estos nombres exactos si coinciden):\n"
+        f"{service_names}\n\n"
+        "Devuelve un objeto JSON con esta forma exacta:\n"
+        '{"suggestions": [{"client": "nombre del cliente", '
+        '"service": "nombre del servicio", "performed_on": "DD/MM/YYYY", '
+        '"quantity": "número (horas o unidades)", "external_id": "referencia '
+        'si aparece, si no vacío", "note": "texto original resumido", '
+        '"confidence": "high | medium | low"}]}\n'
+        "Una sugerencia por actividad. Si un mensaje no describe trabajo "
+        "realizado, ignóralo.\n\n"
+        f"Texto a analizar:\n\"\"\"\n{text}\n\"\"\""
+    )
+
+
+def _clean_suggestion(item, clients, services):
+    """Re-check what the AI said: match names ourselves, parse date and
+    quantity with the same rules as the CSV import, never trust blindly."""
+    matched_client = _match(str(item.get("client") or ""), clients)
+    matched_service = _match(str(item.get("service") or ""), services)
+    try:
+        performed_on = _parse_date(item.get("performed_on")).isoformat()
+    except ValueError:
+        performed_on = None
+    try:
+        quantity = _parse_quantity(item.get("quantity"))
+        quantity = str(quantity) if quantity > 0 else None
+    except InvalidOperation:
+        quantity = None
+    confidence = str(item.get("confidence") or "").lower()
+    complete = all([matched_client, matched_service, performed_on, quantity])
+    if confidence not in ("high", "medium", "low") or not complete:
+        confidence = "low"
+    return {
+        "client": str(item.get("client") or "").strip(),
+        "service": str(item.get("service") or "").strip(),
+        "performed_on": performed_on,
+        "quantity": quantity,
+        "external_id": str(item.get("external_id") or "").strip(),
+        "note": str(item.get("note") or "").strip(),
+        "confidence": confidence,
+        "resolved": {
+            "client_id": matched_client.id if matched_client else None,
+            "service_id": matched_service.id if matched_service else None,
+        },
+    }
+
+
+@activities_bp.route("/suggest", methods=["POST"])
+@jwt_required()
+def suggest_activities():
+    """Turn free text into activity suggestions. Writes nothing."""
+    if not ai.is_configured():
+        return jsonify({"message": "AI is not configured"}), 503
+    tenant_id = current_tenant_id()
+    data = request.get_json(silent=True) or {}
+    text = str(data.get("text") or request.form.get("text") or "").strip()
+    if not text:
+        return jsonify({"message": "text is required"}), 400
+
+    clients = list(db.session.scalars(db.select(Client).filter_by(
+        tenant_id=tenant_id, is_archived=False).order_by(Client.name)))
+    services = list(db.session.scalars(db.select(Service).filter_by(
+        tenant_id=tenant_id).order_by(Service.name)))
+    prompt = _suggest_prompt(text, clients, services, date.today())
+    try:
+        answer = ai.complete(prompt, system=SUGGEST_SYSTEM)
+    except ai.AIError as error:
+        return jsonify({"message": f"AI provider error: {error}"}), 502
+
+    raw = answer.get("suggestions") if isinstance(answer, dict) else None
+    client_catalog, service_catalog = _catalog(clients), _catalog(services)
+    suggestions = [_clean_suggestion(item, client_catalog, service_catalog)
+                   for item in (raw or []) if isinstance(item, dict)]
+    return jsonify({"suggestions": suggestions, "transcript": None}), 200
