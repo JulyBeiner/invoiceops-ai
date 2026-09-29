@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- InvoiceOps brand mark: navy circle with a lime check (same as .io-brand-mark) -->
+  <circle cx="32" cy="32" r="32" fill="#0e1a2b"/>
+  <path d="M18 33 L28 43 L47 22" fill="none" stroke="#c8f169" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
