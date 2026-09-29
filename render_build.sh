@@ -10,7 +10,13 @@ npm run build
 pip install pipenv
 pipenv install
 
-# 3. Database: apply the migrations, then load the demo company
-#    (the seed does nothing if the company already exists, so it is safe to repeat)
+# 3. Database: apply the migrations, then load the demo company.
+#    The seed does nothing if the company already exists, so it is safe to repeat.
+#    Set the SEED_RESET environment variable to 1 in Render to wipe and reload
+#    the demo company on the next deploy (then set it back to 0).
 pipenv run upgrade
-pipenv run seed
+if [ "$SEED_RESET" = "1" ]; then
+  pipenv run seed --reset
+else
+  pipenv run seed
+fi
