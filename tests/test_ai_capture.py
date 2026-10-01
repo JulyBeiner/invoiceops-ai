@@ -1,7 +1,9 @@
+import io
+from datetime import date, timedelta
+
 from api.services import ai
 from tests.test_activities import setup_client_and_service
 from tests.test_clients import auth_header
-from datetime import date, timedelta
 
 FAKE_ANSWER = {"suggestions": [
     {"client": "oficinas sol", "service": "limpieza oficina",
@@ -27,6 +29,10 @@ def fake_ai(monkeypatch, answer=FAKE_ANSWER):
 
     monkeypatch.setattr(ai, "complete", complete)
     return calls
+
+
+def upload(name, content, mime_type):
+    return {"file": (io.BytesIO(content), name, mime_type)}
 
 
 def test_suggest_answers_503_when_ai_is_not_configured(client, monkeypatch):
@@ -113,3 +119,53 @@ def test_suggest_reports_a_provider_failure(client, monkeypatch):
 
     assert response.status_code == 502
     assert "AI provider" in response.get_json()["message"]
+
+
+def test_suggest_sends_a_photo_to_the_ai(client, monkeypatch):
+    calls = fake_ai(monkeypatch)
+    headers = auth_header(client)
+    setup_client_and_service(client, headers)
+
+    response = client.post("/api/activities/suggest",
+                           data=upload("parte.png", b"fake-png", "image/png"),
+                           headers=headers, content_type="multipart/form-data")
+
+    assert response.status_code == 200
+    assert calls[0]["images"] == [(b"fake-png", "image/png")]
+    assert "imagen adjunta" in calls[0]["prompt"]
+    assert len(response.get_json()["suggestions"]) == 2
+
+
+def test_suggest_transcribes_a_voice_note_first(client, monkeypatch):
+    calls = fake_ai(monkeypatch)
+    heard = []
+
+    def transcribe(data, filename, mime_type):
+        heard.append((data, filename, mime_type))
+        return "Lunes 3,5 horas en Oficinas Sol"
+
+    monkeypatch.setattr(ai, "transcribe", transcribe)
+    headers = auth_header(client)
+    setup_client_and_service(client, headers)
+
+    response = client.post("/api/activities/suggest",
+                           data=upload("nota.ogg", b"fake-ogg", "audio/ogg"),
+                           headers=headers, content_type="multipart/form-data")
+
+    assert response.status_code == 200
+    assert heard == [(b"fake-ogg", "nota.ogg", "audio/ogg")]
+    assert response.get_json(
+    )["transcript"] == "Lunes 3,5 horas en Oficinas Sol"
+    assert "Lunes 3,5 horas en Oficinas Sol" in calls[0]["prompt"]
+
+
+def test_suggest_rejects_other_file_types(client, monkeypatch):
+    fake_ai(monkeypatch)
+    headers = auth_header(client)
+
+    response = client.post("/api/activities/suggest",
+                           data=upload("doc.pdf", b"%PDF", "application/pdf"),
+                           headers=headers, content_type="multipart/form-data")
+
+    assert response.status_code == 400
+    assert "image" in response.get_json()["message"]

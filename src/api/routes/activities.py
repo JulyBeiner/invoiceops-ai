@@ -297,17 +297,48 @@ def _clean_suggestion(item, clients, services):
     }
 
 
+IMAGE_TYPES = {"image/png", "image/jpeg", "image/webp"}
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+
+
 @activities_bp.route("/suggest", methods=["POST"])
 @jwt_required()
 def suggest_activities():
-    """Turn free text into activity suggestions. Writes nothing."""
+    """Turn free text, a photo or a voice note into activity suggestions.
+
+    JSON {"text": ...} or multipart with "text" and/or "file" (an image of a
+    work sheet or chat, or an audio note). Writes nothing.
+    """
     if not ai.is_configured():
         return jsonify({"message": "AI is not configured"}), 503
     tenant_id = current_tenant_id()
     data = request.get_json(silent=True) or {}
     text = str(data.get("text") or request.form.get("text") or "").strip()
-    if not text:
+
+    images, transcript = [], None
+    upload = request.files.get("file")
+    if upload is not None and upload.filename:
+        content = upload.read()
+        if len(content) > MAX_UPLOAD_BYTES:
+            return jsonify({"message": "file is too large (max 10 MB)"}), 400
+        mime_type = (upload.mimetype or "").lower()
+        if mime_type in IMAGE_TYPES:
+            images = [(content, mime_type)]
+        elif mime_type.startswith("audio/"):
+            try:
+                transcript = ai.transcribe(content, upload.filename, mime_type)
+            except ai.AIError as error:
+                return jsonify({"message": f"AI provider error: {error}"}), 502
+            text = f"{text}\n{transcript}".strip()
+        else:
+            return jsonify({"message": "file must be an image (png, jpg, webp) "
+                                       "or an audio note"}), 400
+    if not text and not images:
         return jsonify({"message": "text is required"}), 400
+    if images:
+        text = (text or "(sin texto)") + (
+            "\n\nAdemás hay una imagen adjunta (parte de trabajo, captura de "
+            "chat o nota manuscrita): lee las actividades que aparezcan en ella.")
 
     clients = list(db.session.scalars(db.select(Client).filter_by(
         tenant_id=tenant_id, is_archived=False).order_by(Client.name)))
@@ -315,7 +346,7 @@ def suggest_activities():
         tenant_id=tenant_id).order_by(Service.name)))
     prompt = _suggest_prompt(text, clients, services, date.today())
     try:
-        answer = ai.complete(prompt, system=SUGGEST_SYSTEM)
+        answer = ai.complete(prompt, system=SUGGEST_SYSTEM, images=images)
     except ai.AIError as error:
         return jsonify({"message": f"AI provider error: {error}"}), 502
 
@@ -323,4 +354,4 @@ def suggest_activities():
     client_catalog, service_catalog = _catalog(clients), _catalog(services)
     suggestions = [_clean_suggestion(item, client_catalog, service_catalog)
                    for item in (raw or []) if isinstance(item, dict)]
-    return jsonify({"suggestions": suggestions, "transcript": None}), 200
+    return jsonify({"suggestions": suggestions, "transcript": transcript}), 200
