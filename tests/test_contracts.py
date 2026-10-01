@@ -66,3 +66,21 @@ def test_contract_is_isolated_per_tenant(client):
 
     response = client.put(url, json={}, headers=headers_b)
     assert response.status_code == 404
+
+
+def test_set_contract_can_change_the_price_of_the_same_service(client):
+    headers = auth_header(client)
+    client_id = create_client(client, headers)["id"]
+    service_id = create_service(client, headers)["id"]
+    url = f"/api/clients/{client_id}/contract"
+    client.put(url, json={"prices": [{"service_id": service_id, "unit_price": 40}]},
+               headers=headers)
+
+    response = client.put(url, json={
+        "prices": [{"service_id": service_id, "unit_price": "42.50"}],
+    }, headers=headers)
+
+    assert response.status_code == 200
+    prices = response.get_json()["prices"]
+    assert len(prices) == 1
+    assert prices[0]["unit_price"] == "42.50"

@@ -146,6 +146,10 @@ def set_contract(client_id):
         db.session.add(contract)
     contract.fixed_monthly_fee = fixed_fee
     contract.vat_rate = vat_rate
+    # Delete the old prices before inserting the new ones: SQLAlchemy would
+    # otherwise INSERT first and hit the unique (contract, service) constraint.
+    contract.prices.clear()
+    db.session.flush()
     contract.prices = prices
     db.session.commit()
     return jsonify(contract.serialize()), 200

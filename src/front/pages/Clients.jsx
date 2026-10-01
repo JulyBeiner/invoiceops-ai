@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, errorText } from "../api";
+import { aiError, api, errorText } from "../api";
 
 const emptyClient = { name: "", tax_id: "", email: "" };
 const toApi = (value) => String(value ?? "").trim().replace(",", ".");
@@ -84,9 +84,21 @@ const ClientDetail = ({ detail, services, onChanged, onServiceCreated, say }) =>
     const [prices, setPrices] = useState({});
     const [newService, setNewService] = useState({ name: "", unit: "hora" });
     const [saving, setSaving] = useState(false);
+    // AI: read the contract (text or photo) and prefill the inputs above; nothing is saved
+    const [readerOpen, setReaderOpen] = useState(false);
+    const [contractText, setContractText] = useState("");
+    const [contractFile, setContractFile] = useState(null);
+    const [fileKey, setFileKey] = useState(0);
+    const [reading, setReading] = useState(false);
+    const [pending, setPending] = useState([]); // services the AI read that the company does not have yet
 
     useEffect(() => {
         setEditing(false);
+        setReaderOpen(false);
+        setContractText("");
+        setContractFile(null);
+        setFileKey((k) => k + 1);
+        setPending([]);
         setForm({ name: detail.name, tax_id: detail.tax_id || "", email: detail.email || "" });
         const contract = detail.contract;
         setFee(toInput(contract ? contract.fixed_monthly_fee : "0"));
@@ -140,6 +152,44 @@ const ClientDetail = ({ detail, services, onChanged, onServiceCreated, say }) =>
         }
     };
 
+    const readContract = async () => {
+        setReading(true);
+        try {
+            let body = { text: contractText };
+            if (contractFile) {
+                body = new FormData();
+                body.append("text", contractText);
+                body.append("file", contractFile);
+            }
+            const result = await api(`/clients/${detail.id}/contract/suggest`, { method: "POST", body });
+            setFee(toInput(result.fixed_monthly_fee));
+            setVat(toInput(result.vat_rate));
+            const map = { ...prices };
+            result.services.filter((s) => s.exists).forEach((s) => { map[s.service_id] = toInput(s.unit_price); });
+            setPrices(map);
+            setPending(result.services.filter((s) => !s.exists));
+            const found = result.services.filter((s) => s.exists).length;
+            say(found > 0 || result.services.length === 0 ? "success" : "warning",
+                found > 0 ? `Rellenados cuota, IVA y ${found} precios. Revisa y pulsa Guardar contrato.` : "Rellenados cuota e IVA. Los servicios leídos no existen aún: créalos abajo.");
+        } catch (err) {
+            say("danger", err.status === 400 ? "Pega el texto del contrato o adjunta una foto (png, jpg, webp, menos de 10 MB)." : aiError(err));
+        } finally {
+            setReading(false);
+        }
+    };
+
+    const createPending = async (item) => {
+        try {
+            const created = await api("/services", { method: "POST", body: { name: item.catalog_match || item.name, unit: item.unit } });
+            if (item.unit_price) setPrices((map) => ({ ...map, [created.id]: toInput(item.unit_price) }));
+            setPending((list) => list.filter((p) => p !== item));
+            say("success", `Servicio "${created.name}" creado con su precio. Pulsa Guardar contrato.`);
+            onServiceCreated();
+        } catch (err) {
+            say("danger", errorText(err));
+        }
+    };
+
     const addService = async (e) => {
         e.preventDefault();
         if (!newService.name.trim()) return;
@@ -187,6 +237,38 @@ const ClientDetail = ({ detail, services, onChanged, onServiceCreated, say }) =>
                         {detail.contract ? "Activo" : "Sin contrato"}
                     </span>
                 </div>
+
+                <button type="button" className="btn btn-link btn-sm p-0 align-self-start" onClick={() => setReaderOpen((v) => !v)}>
+                    <i className="fa-solid fa-wand-magic-sparkles me-2"></i>{readerOpen ? "Ocultar" : "Rellenar con IA desde el contrato (texto o foto)"}
+                </button>
+                {readerOpen && (
+                    <div className="card p-3 d-flex flex-column gap-2" style={{ background: "var(--io-lime-soft)" }}>
+                        <span className="io-muted" style={{ fontSize: 13 }}>Pega el texto del contrato o del presupuesto, o adjunta una foto o captura. La IA lee y propone cuota, IVA y precios; tú revisas y guardas.</span>
+                        <textarea className="form-control" rows={4} placeholder="Ejemplo: «Cuota fija 250 € al mes. Limpieza de oficina 28,50 €/hora. Cristales 45 € por unidad. IVA 21 %»" value={contractText} onChange={(e) => setContractText(e.target.value)} />
+                        <div className="d-flex gap-2 align-items-center flex-wrap">
+                            <input key={fileKey} type="file" className="form-control form-control-sm" style={{ maxWidth: 300 }} accept="image/png,image/jpeg,image/webp" aria-label="Foto del contrato" onChange={(e) => setContractFile(e.target.files[0] || null)} />
+                            <button type="button" className="btn btn-primary btn-sm" disabled={reading || (!contractText.trim() && !contractFile)} onClick={readContract}>
+                                <i className="fa-solid fa-wand-magic-sparkles me-2"></i>{reading ? "Leyendo…" : "Analizar"}
+                            </button>
+                        </div>
+                        {pending.length > 0 && (
+                            <div className="d-flex flex-column gap-1 pt-2 border-top">
+                                <span className="fw-semibold" style={{ fontSize: 13 }}>Servicios del contrato que aún no tienes:</span>
+                                {pending.map((item) => (
+                                    <div key={item.name} className="d-flex align-items-center gap-2" style={{ fontSize: 14 }}>
+                                        <span className="flex-grow-1">
+                                            {item.catalog_match || item.name} <span className="io-muted">/ {item.unit}{item.unit_price ? ` · ${toInput(item.unit_price)} €` : " · sin precio claro"}</span>
+                                            {item.catalog_match && item.catalog_match !== item.name && <span className="io-muted" style={{ fontSize: 12 }}> (leído: «{item.name}»)</span>}
+                                        </span>
+                                        <button type="button" className="btn btn-outline-secondary btn-sm" onClick={() => createPending(item)}>Crear</button>
+                                        <button type="button" className="btn btn-link btn-sm" onClick={() => setPending((list) => list.filter((p) => p !== item))} aria-label="Descartar"><i className="fa-solid fa-xmark"></i></button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                        <span className="io-muted" style={{ fontSize: 12 }}>El texto y la foto se envían al proveedor de IA. Nada se guarda hasta que pulses Guardar contrato.</span>
+                    </div>
+                )}
                 <div className="row g-2">
                     <div className="col-6">
                         <label className="form-label" htmlFor="fee">Cuota fija mensual (€)</label>
