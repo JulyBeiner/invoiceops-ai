@@ -1,6 +1,7 @@
 from api.services import ai
 from tests.test_activities import setup_client_and_service
 from tests.test_clients import auth_header
+from datetime import date, timedelta
 
 FAKE_ANSWER = {"suggestions": [
     {"client": "oficinas sol", "service": "limpieza oficina",
@@ -77,6 +78,8 @@ def test_suggest_matches_names_and_parses_spanish_formats(client, monkeypatch):
     assert "Oficinas Sol" in calls[0]["prompt"]
     assert "Limpieza de oficina" in calls[0]["prompt"]
     assert calls[0]["system"]
+    yesterday = date.today() - timedelta(days=1)
+    assert yesterday.strftime("%d/%m/%Y") in calls[0]["prompt"]
 
 
 def test_suggest_tolerates_unusable_ai_values(client, monkeypatch):

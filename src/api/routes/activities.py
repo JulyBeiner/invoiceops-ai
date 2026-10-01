@@ -2,7 +2,7 @@ import csv
 import io
 import re
 import unicodedata
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from difflib import get_close_matches
 
@@ -227,15 +227,27 @@ WEEKDAYS_ES = ("lunes", "martes", "miércoles", "jueves", "viernes",
                "sábado", "domingo")
 
 
+def _recent_days(today):
+    """'- hoy: miércoles 30/09/2026' ... for the last 7 days, so the model
+    looks dates up instead of calculating them."""
+    lines = []
+    for offset in range(7):
+        day = today - timedelta(days=offset)
+        label = {0: "hoy", 1: "ayer"}.get(offset, "")
+        lines.append(f"- {label + ': ' if label else ''}"
+                     f"{WEEKDAYS_ES[day.weekday()]} {day:%d/%m/%Y}")
+    return "\n".join(lines)
+
+
 def _suggest_prompt(text, clients, services, today):
-    """Build the user prompt: today's date, the tenant's names and the schema."""
+    """Build the user prompt: recent dates, the tenant's names and the schema."""
     client_names = "\n".join(f"- {c.name}" for c in clients) or "- (ninguno)"
     service_names = "\n".join(
         f"- {s.name} (unidad: {s.unit})" for s in services) or "- (ninguno)"
     return (
-        f"Hoy es {WEEKDAYS_ES[today.weekday()]} {today:%d/%m/%Y}. "
-        "Si el texto dice 'ayer', 'el lunes', etc., calcula la fecha real "
-        "(la más reciente que ya haya pasado).\n\n"
+        "Fechas de los últimos días (usa esta lista, no calcules):\n"
+        f"{_recent_days(today)}\n"
+        "Si el texto no dice el día, usa hoy.\n\n"
         f"Clientes de la empresa (usa estos nombres exactos si coinciden):\n"
         f"{client_names}\n\n"
         f"Servicios de la empresa (usa estos nombres exactos si coinciden):\n"
