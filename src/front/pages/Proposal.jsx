@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { api, download, errorText } from "../api";
+import { aiError, api, download, errorText } from "../api";
 import { date, euros, monthLabel, number } from "../format";
 
 export const Proposal = () => {
@@ -9,6 +9,9 @@ export const Proposal = () => {
   const [run, setRun] = useState(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState(null);
+  const [explanation, setExplanation] = useState(null); // {summary, email_subject, email_body}
+  const [explaining, setExplaining] = useState(false);
+  const [showEmail, setShowEmail] = useState(false);
 
   const say = (kind, text) => {
     setNotice({ kind, text });
@@ -41,6 +44,28 @@ export const Proposal = () => {
       await download(`/proposals/${id}/pdf`, `propuesta-${id}.pdf`);
     } catch (err) {
       say("danger", errorText(err));
+    }
+  };
+
+  // The AI words what the billing engine computed; it never changes a figure.
+  const explain = async () => {
+    setExplaining(true);
+    try {
+      setExplanation(await api(`/proposals/${id}/explain`));
+      setShowEmail(false);
+    } catch (err) {
+      say("danger", aiError(err));
+    } finally {
+      setExplaining(false);
+    }
+  };
+
+  const copy = async (text) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      say("success", "Copiado al portapapeles.");
+    } catch {
+      say("warning", "No se pudo copiar: selecciona el texto y usa Ctrl+C.");
     }
   };
 
@@ -146,6 +171,42 @@ export const Proposal = () => {
                 : `Cuando apruebes las ${run ? run.proposals.length : ""} propuestas, el mes quedará cerrado y podrás exportar el CSV.`}</li>
             </ul>
           </div>
+
+          <div className="card p-3 d-flex flex-column gap-2" style={{ fontSize: 14 }}>
+            <h2 className="mb-1" style={{ fontSize: 16 }}>
+              <i className="fa-solid fa-wand-magic-sparkles me-2"></i>Explicar con IA
+            </h2>
+            {!explanation && (
+              <span className="io-muted" style={{ fontSize: 13 }}>Un resumen en palabras llanas y el borrador del correo para el cliente. Los importes son los del motor; la IA solo los redacta.</span>
+            )}
+            {explanation && <p className="mb-0">{explanation.summary || "La IA no ha devuelto resumen."}</p>}
+            <div className="d-flex gap-2 flex-wrap">
+              <button type="button" className="btn btn-outline-secondary btn-sm" onClick={explain} disabled={explaining}>
+                <i className="fa-solid fa-wand-magic-sparkles me-2"></i>{explaining ? "Explicando…" : explanation ? "Volver a explicar" : "Explicar"}
+              </button>
+              {explanation && (explanation.email_subject || explanation.email_body) && (
+                <button type="button" className="btn btn-outline-secondary btn-sm" onClick={() => setShowEmail((v) => !v)}>
+                  <i className="fa-solid fa-envelope me-2"></i>{showEmail ? "Ocultar correo" : "Redactar correo"}
+                </button>
+              )}
+            </div>
+            {explanation && showEmail && (
+              <div className="d-flex flex-column gap-2 pt-2 border-top">
+                <label className="io-muted mb-0" style={{ fontSize: 12 }} htmlFor="ai-subject">Asunto</label>
+                <div className="d-flex gap-2">
+                  <input id="ai-subject" className="form-control form-control-sm" readOnly value={explanation.email_subject} />
+                  <button type="button" className="btn btn-outline-secondary btn-sm" onClick={() => copy(explanation.email_subject)} aria-label="Copiar asunto"><i className="fa-regular fa-copy"></i></button>
+                </div>
+                <label className="io-muted mb-0" style={{ fontSize: 12 }} htmlFor="ai-body">Correo</label>
+                <textarea id="ai-body" className="form-control form-control-sm" rows={10} readOnly value={explanation.email_body} />
+                <button type="button" className="btn btn-outline-secondary btn-sm align-self-start" onClick={() => copy(explanation.email_body)}>
+                  <i className="fa-regular fa-copy me-2"></i>Copiar correo
+                </button>
+                <span className="io-muted" style={{ fontSize: 12 }}>Revísalo antes de enviarlo desde tu correo.</span>
+              </div>
+            )}
+          </div>
+
           <div className="card p-3 d-flex flex-column gap-1" style={{ fontSize: 14 }}>
             <h2 className="mb-1" style={{ fontSize: 16 }}>Cliente</h2>
             <span>{proposal.client_name}</span>

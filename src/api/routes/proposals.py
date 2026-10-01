@@ -75,7 +75,10 @@ def download_proposal_pdf(proposal_id):
 EXPLAIN_SYSTEM = (
     "Explicas una propuesta de facturación a la persona que la revisa y "
     "redactas el correo para su cliente. Usa exactamente los importes y "
-    "cantidades dados: no calcules, no redondees ni inventes nada. Responde "
+    "cantidades dados: no calcules, no redondees ni inventes nada. Escribe "
+    "los importes al estilo español, con coma decimal y el símbolo €, por "
+    "ejemplo 782,50 €. Es una propuesta de facturación, no una factura: usa "
+    "siempre la palabra propuesta, nunca factura. Responde "
     "SOLO con JSON válido con esta forma exacta: "
     '{"summary": "3 o 4 frases en español que expliquen qué se factura y por '
     'qué", "email_subject": "asunto del correo", "email_body": "correo '
