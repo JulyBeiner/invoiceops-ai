@@ -94,12 +94,41 @@ Roles: **owner** (creates the company), **admin** (runs billing), **user** (any 
 
 **US-13** As a user, I can see a dashboard with this month's activities, pending proposals and totals so that I know where billing stands.
 
-### Stretch (only if time allows)
+### AI (block 11)
+
+Principle for every AI story: the AI reads and proposes; the billing engine computes; the person confirms. Every AI endpoint returns suggestions only and never writes; the backend re-matches names and re-parses dates and numbers; without an API key the app works and the AI buttons say so (503); a provider failure returns 502.
 
 **US-14** As an admin, I can paste WhatsApp messages and get suggested activities to confirm, so that I don't retype them.
 
 - Suggestions come from an AI API; nothing is saved until I confirm.
 - The AI never calculates prices or totals; the billing engine does.
+- Each suggestion carries the client and service it resolved to (or the name it read, so I can choose), the date, the quantity and a confidence (Segura / Revisar / Incompleta); I edit rows and create only the ticked ones.
+- The prompt lists the dates of the last 7 days as facts, so "ayer" and "lunes" are never computed by the model.
+
+**US-15** As an admin, I can upload a photo of a work sheet, a handwritten note or a chat screenshot and get suggested activities to confirm.
+
+- Same panel and same rows as US-14; png, jpg and webp up to 10 MB.
+- Any other file type → error 400, nothing sent to the provider.
+
+**US-16** As an admin, I can upload a voice note and get its transcript plus suggested activities to confirm.
+
+- The audio is transcribed first; the transcript is shown so I can check what the AI heard.
+- Any `audio/*` type is accepted (`.m4a`, `.ogg`, `.opus`, `.mp3`, `.wav`).
+
+**US-17** As an admin, I can paste the text of a contract or upload its photo and get the contract form prefilled to review.
+
+- Prefills fixed fee, VAT and the price of each service the company already has.
+- Services the AI reads but the company does not have are listed with a "Crear" button (matched to the niche catalog when possible); nothing is saved until I press "Guardar contrato".
+- No text and no image → error 400.
+
+**US-19** As an admin, I can get a plain-language explanation of a proposal and a draft email for the client.
+
+- The prompt carries every figure already computed (lines, base, VAT, total); the AI only words them and must use them verbatim.
+- Summary and email are shown read-only with copy buttons; nothing is stored.
+
+### Moved to phase 2
+
+**US-18** review of the month before closing (missing visits, duplicates, unpriced services) · **US-20** CSV with any column names · **US-21** learned name aliases · **US-22** month forecast on the dashboard.
 
 ## 2. Class diagram
 
@@ -203,47 +232,50 @@ Every business table carries `tenant_id` (directly or through its parent) and al
 
 All routes under `/api`. Routes marked 🔒 require `Authorization: Bearer <token>`.
 
-| Method | Route                              | Body / params                                 | Returns                       | Story |
-| ------ | ---------------------------------- | --------------------------------------------- | ----------------------------- | ----- |
-| GET    | `/health`                          | —                                             | `{status, database}`          | —     |
-| POST   | `/auth/register`                   | company_name, full_name, email, password      | user + token                  | US-01 |
-| POST   | `/auth/login`                      | email, password                               | token                         | US-02 |
-| GET    | `/auth/me` 🔒                      | —                                             | current user                  | US-02 |
-| GET    | `/auth/tenant` 🔒                  | —                                             | company `{id, name, tax_id}`  | US-13b |
-| PUT    | `/auth/tenant` 🔒                  | name, tax_id                                  | company                       | US-13b |
-| POST   | `/auth/forgot-password`            | email                                         | generic message               | US-03 |
-| POST   | `/auth/reset-password`             | token, password                               | message                       | US-04 |
-| GET    | `/clients` 🔒                      | —                                             | list of clients               | US-05 |
-| POST   | `/clients` 🔒                      | name, tax_id, email                           | client                        | US-05 |
-| GET    | `/clients/<id>` 🔒                 | —                                             | client + contract             | US-05 |
-| PUT    | `/clients/<id>` 🔒                 | fields to change                              | client                        | US-05 |
-| DELETE | `/clients/<id>` 🔒                 | —                                             | archives the client           | US-05 |
-| GET    | `/services` 🔒                     | —                                             | list of services              | US-06 |
-| POST   | `/services` 🔒                     | name, unit                                    | service                       | US-06 |
-| GET    | `/services/catalog` 🔒             | —                                             | standard services + `exists`  | US-06 |
-| POST   | `/services/catalog` 🔒             | names[]                                       | `{created, skipped}`          | US-06 |
-| PUT    | `/clients/<id>/contract` 🔒        | fixed_monthly_fee, vat_rate, prices[]         | contract                      | US-06 |
-| GET    | `/activities` 🔒                   | ?month=YYYY-MM&client_id                      | list                          | US-07 |
-| POST   | `/activities` 🔒                   | client_id, service_id, performed_on, quantity | activity                      | US-07 |
-| POST   | `/activities/import` 🔒            | CSV file, `?commit=true` to save              | preview / import result       | US-08 |
-| GET    | `/billing-runs` 🔒                 | —                                             | list of runs                  | US-09 |
-| POST   | `/billing-runs` 🔒                 | month (YYYY-MM)                               | run + proposals + clients_without_activity; 400 if nothing to bill, 409 if already closed | US-09 |
-| GET    | `/billing-runs/<id>` 🔒            | —                                             | run + proposals               | US-09 |
-| GET    | `/proposals/<id>` 🔒               | —                                             | proposal + lines + activities | US-10 |
-| POST   | `/proposals/<id>/approve` 🔒       | —                                             | proposal                      | US-10 |
-| GET    | `/proposals/<id>/pdf` 🔒           | —                                             | PDF file                      | US-11 |
-| GET    | `/billing-runs/<id>/export.csv` 🔒 | —                                             | CSV file                      | US-12 |
-| GET    | `/dashboard` 🔒                    | ?month=YYYY-MM (default: current month)       | `{month, active_clients, activities: {total, unbilled}, billing_run, clients_without_activity, proposals: {draft, approved}, totals: {draft, approved}}` | US-13 |
+| Method | Route                               | Body / params                                               | Returns                                                                                                                                                  | Story               |
+| ------ | ----------------------------------- | ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
+| GET    | `/health`                           | —                                                           | `{status, database}`                                                                                                                                     | —                   |
+| POST   | `/auth/register`                    | company_name, full_name, email, password                    | user + token                                                                                                                                             | US-01               |
+| POST   | `/auth/login`                       | email, password                                             | token                                                                                                                                                    | US-02               |
+| GET    | `/auth/me` 🔒                       | —                                                           | current user                                                                                                                                             | US-02               |
+| GET    | `/auth/tenant` 🔒                   | —                                                           | company `{id, name, tax_id}`                                                                                                                             | US-13b              |
+| PUT    | `/auth/tenant` 🔒                   | name, tax_id                                                | company                                                                                                                                                  | US-13b              |
+| POST   | `/auth/forgot-password`             | email                                                       | generic message                                                                                                                                          | US-03               |
+| POST   | `/auth/reset-password`              | token, password                                             | message                                                                                                                                                  | US-04               |
+| GET    | `/clients` 🔒                       | —                                                           | list of clients                                                                                                                                          | US-05               |
+| POST   | `/clients` 🔒                       | name, tax_id, email                                         | client                                                                                                                                                   | US-05               |
+| GET    | `/clients/<id>` 🔒                  | —                                                           | client + contract                                                                                                                                        | US-05               |
+| PUT    | `/clients/<id>` 🔒                  | fields to change                                            | client                                                                                                                                                   | US-05               |
+| DELETE | `/clients/<id>` 🔒                  | —                                                           | archives the client                                                                                                                                      | US-05               |
+| GET    | `/services` 🔒                      | —                                                           | list of services                                                                                                                                         | US-06               |
+| POST   | `/services` 🔒                      | name, unit                                                  | service                                                                                                                                                  | US-06               |
+| GET    | `/services/catalog` 🔒              | —                                                           | standard services + `exists`                                                                                                                             | US-06               |
+| POST   | `/services/catalog` 🔒              | names[]                                                     | `{created, skipped}`                                                                                                                                     | US-06               |
+| PUT    | `/clients/<id>/contract` 🔒         | fixed_monthly_fee, vat_rate, prices[]                       | contract                                                                                                                                                 | US-06               |
+| GET    | `/activities` 🔒                    | ?month=YYYY-MM&client_id                                    | list                                                                                                                                                     | US-07               |
+| POST   | `/activities` 🔒                    | client_id, service_id, performed_on, quantity               | activity                                                                                                                                                 | US-07               |
+| POST   | `/activities/import` 🔒             | CSV file, `?commit=true` to save                            | preview / import result                                                                                                                                  | US-08               |
+| POST   | `/activities/suggest` 🔒            | JSON `{text}` or multipart `text` + `file` (image or audio) | `{suggestions[], transcript}`; never saves                                                                                                               | US-14, US-15, US-16 |
+| POST   | `/clients/<id>/contract/suggest` 🔒 | JSON `{text}` or multipart `text` + `file` (image)          | `{fixed_monthly_fee, vat_rate, services[]}`; never saves                                                                                                 | US-17               |
+| GET    | `/billing-runs` 🔒                  | —                                                           | list of runs                                                                                                                                             | US-09               |
+| POST   | `/billing-runs` 🔒                  | month (YYYY-MM)                                             | run + proposals + clients_without_activity; 400 if nothing to bill, 409 if already closed                                                                | US-09               |
+| GET    | `/billing-runs/<id>` 🔒             | —                                                           | run + proposals                                                                                                                                          | US-09               |
+| GET    | `/proposals/<id>` 🔒                | —                                                           | proposal + lines + activities                                                                                                                            | US-10               |
+| POST   | `/proposals/<id>/approve` 🔒        | —                                                           | proposal                                                                                                                                                 | US-10               |
+| GET    | `/proposals/<id>/pdf` 🔒            | —                                                           | PDF file                                                                                                                                                 | US-11               |
+| GET    | `/proposals/<id>/explain` 🔒        | —                                                           | `{summary, email_subject, email_body}`                                                                                                                   | US-19               |
+| GET    | `/billing-runs/<id>/export.csv` 🔒  | —                                                           | CSV file                                                                                                                                                 | US-12               |
+| GET    | `/dashboard` 🔒                     | ?month=YYYY-MM (default: current month)                     | `{month, active_clients, activities: {total, unbilled}, billing_run, clients_without_activity, proposals: {draft, approved}, totals: {draft, approved}}` | US-13               |
 
-Errors always return JSON: `{"message": "..."}` with the proper HTTP status (400 invalid data, 401 not logged in, 403 not allowed, 404 not found, 409 conflict).
+Errors always return JSON: `{"message": "..."}` with the proper HTTP status (400 invalid data, 401 not logged in, 403 not allowed, 404 not found, 409 conflict, 503 AI not configured, 502 AI provider error).
 
 ## 4. Screens
 
 1. Login / register / forgot password
 2. Dashboard
-3. Clients list + client detail with contract and service catalog
-4. Activities list + add activity + CSV import
-5. Month close: run list → proposal detail with lines and activity annex, approve, PDF
+3. Clients list + client detail with contract and service catalog; "Rellenar con IA desde el contrato" panel
+4. Activities list + add activity + CSV import + "Sugerir con IA" panel (text, photo, voice note)
+5. Month close: run list → proposal detail with lines and activity annex, approve, PDF; "Explicar con IA" card
 6. Settings: company name and tax id
 
 Design notes and the final look: `docs/DESIGN.md`.
@@ -254,4 +286,4 @@ Design notes and the final look: `docs/DESIGN.md`.
 
 ## 6. Tech stack
 
-React 18 + Vite, Context API with Flux-style store (reducer + actions) · Flask 3 + SQLAlchemy 2 + Alembic · PostgreSQL 16 · JWT (flask-jwt-extended) · bcrypt · pytest · third-party APIs: email delivery (password reset) and, as stretch, an AI API for text-to-activities · fpdf2 for the PDF · deployed on Render.
+React 18 + Vite, Context API with Flux-style store (reducer + actions) · Flask 3 + SQLAlchemy 2 + Alembic · PostgreSQL 16 · JWT (flask-jwt-extended) · bcrypt · pytest · third-party APIs: Brevo (password-reset email) and OpenAI (chat completions with images, audio transcription; REST, no SDK; prompts in Spanish, JSON answers) · fpdf2 for the PDF · deployed on Render (Blueprint, auto-deploy from `main`).

@@ -6,30 +6,30 @@ Target user: the person who runs the administration of a small B2B cleaning or m
 
 ## Palette (CSS variables in `src/front/index.css`)
 
-| Variable | Value | Use |
-| ---------------- | --------- | ------------------------------------------------ |
-| `--io-ink` | `#0e1a2b` | headings, body of primary buttons, brand mark |
-| `--io-ink-2` | `#1c2b40` | hover on ink |
-| `--io-lime` | `#c8f169` | primary buttons, brand check, current step |
-| `--io-lime-2` | `#b5e24f` | primary button hover |
-| `--io-lime-soft` | `#edf9d2` | active sidebar item, green badges, selected row |
-| `--io-ground` | `#f5f6f8` | page background |
-| `--io-surface` | `#ffffff` | cards, tables, inputs, sidebar |
-| `--io-border` | `#e6e8ec` | card borders; `--io-line #eef0f3` for table row lines |
-| `--io-text` | `#111827` | body text |
-| `--io-muted` | `#6b7280` | secondary text, sidebar inactive links |
+| Variable         | Value     | Use                                                   |
+| ---------------- | --------- | ----------------------------------------------------- |
+| `--io-ink`       | `#0e1a2b` | headings, body of primary buttons, brand mark         |
+| `--io-ink-2`     | `#1c2b40` | hover on ink                                          |
+| `--io-lime`      | `#c8f169` | primary buttons, brand check, current step            |
+| `--io-lime-2`    | `#b5e24f` | primary button hover                                  |
+| `--io-lime-soft` | `#edf9d2` | active sidebar item, green badges, selected row       |
+| `--io-ground`    | `#f5f6f8` | page background                                       |
+| `--io-surface`   | `#ffffff` | cards, tables, inputs, sidebar                        |
+| `--io-border`    | `#e6e8ec` | card borders; `--io-line #eef0f3` for table row lines |
+| `--io-text`      | `#111827` | body text                                             |
+| `--io-muted`     | `#6b7280` | secondary text, sidebar inactive links                |
 
 `--io-navy` and `--io-accent` are kept as aliases of ink and lime so older class names keep working.
 
 Status colors (badge background / text, classes `io-badge io-badge-*`):
 
-| Class | Background | Text | Where |
-| ---------------- | --------- | --------- | -------------------------------------- |
-| `amber` | `#fdf1d6` | `#8a5a0b` | Pendiente, Borrador, En revisión |
-| `green` | `#edf9d2` | `#3b6d11` | Facturada, Aprobada, Activo, Correcta |
-| `navy` | `#e5e9f0` | `#0e1a2b` | Cerrado |
-| `gray` | `#eceef2` | `#6b7280` | Archivado, Duplicada, "ya lo tienes" |
-| `red` | `#fde4e1` | `#9b2c1b` | Error, Sin precio |
+| Class   | Background | Text      | Where                                 |
+| ------- | ---------- | --------- | ------------------------------------- |
+| `amber` | `#fdf1d6`  | `#8a5a0b` | Pendiente, Borrador, En revisión      |
+| `green` | `#edf9d2`  | `#3b6d11` | Facturada, Aprobada, Activo, Correcta |
+| `navy`  | `#e5e9f0`  | `#0e1a2b` | Cerrado                               |
+| `gray`  | `#eceef2`  | `#6b7280` | Archivado, Duplicada, "ya lo tienes"  |
+| `red`   | `#fde4e1`  | `#9b2c1b` | Error, Sin precio                     |
 
 Colors that must be told apart also differ in lightness, not only in hue.
 
@@ -53,11 +53,12 @@ Bootstrap 5 provides the grid, forms, tables and utilities; `index.css` override
 
 1. **Acceso** (`/login`, `/register`, `/forgot-password`, `/reset-password`): split layout, ink panel with the value proposition on the left, one card form on the right.
 2. **Inicio** (`/`): month selector, four KPI cards (`GET /api/dashboard`), the three steps of the month (registrar → cerrar → aprobar) with the primary action for the current step, "Revisar antes de cerrar" with the clients without activity, last activities.
-3. **Clientes** (`/clients`): list on the left (name/NIF, email, status, "Ver archivados"), detail panel on the right: editable client data, contract editor (fee, VAT, price per service, "Sin precio · no se factura"), "Nuevo servicio" form and "Añadir del catálogo del sector" (checkboxes; existing services ticked and disabled), Archivar / Reactivar.
-4. **Actividades** (`/activities`): one-line quick add form, filters (month, client), table with Pendiente / Facturada per row and the CSV reference.
+3. **Clientes** (`/clients`): list on the left (name/NIF, email, status, "Ver archivados"), detail panel on the right: editable client data, contract editor (fee, VAT, price per service, "Sin precio · no se factura") with the link "Rellenar con IA desde el contrato (texto o foto)" that opens a lime-soft panel (textarea, photo input, Analizar) and prefills the inputs; services read but not owned are listed with Crear / discard. "Nuevo servicio" form and "Añadir del catálogo del sector" (checkboxes; existing services ticked and disabled), Archivar / Reactivar.
+4. **Actividades** (`/activities`): header actions "Importar CSV" and "Sugerir con IA" (primary), one-line quick add form, filters (month, client), table with Pendiente / Facturada per row and the CSV reference.
+   4b. **Sugerir con IA** (panel above the quick add form): textarea for pasted messages, file input "O adjunta una foto del parte o una nota de voz", Analizar; a lime-soft box shows the transcript of a voice note; the suggestions are editable rows (checkbox, client and service selects with "La IA leyó: «…»" under unresolved ones, date, quantity, ref, confidence badge Segura / Revisar / Incompleta with the note) and "Crear N actividades" saves only the ticked rows through the normal endpoint.
 5. **Importar CSV** (dialog on `/activities`): preview table with Correcta / Error / Duplicada per row, "→ nombre interpretado" when a name was matched loosely, "Importar N actividades" only saves the correct rows.
 6. **Cierre de mes** (`/billing`): month input + "Cerrar mes", warning banner with the idle clients, runs table (month, proposals, approved, total, En revisión / Cerrado, Exportar CSV), proposals of the selected run with status and Ver.
-7. **Propuesta** (`/proposals/:id`): header with client and status, lines with quantities and prices, totals, activity annex, "Antes de aprobar" box, client card, actions Descargar PDF and Aprobar propuesta.
+7. **Propuesta** (`/proposals/:id`): header with client and status, lines with quantities and prices, totals, activity annex, "Antes de aprobar" box, "Explicar con IA" card (Explicar → 3-4 sentence summary; Redactar correo → read-only subject and body with copy buttons), client card, actions Descargar PDF and Aprobar propuesta.
 8. **Ajustes** (`/settings`): company name and NIF (issuer on the PDF).
 
 ## Copy conventions (Spanish UI)
@@ -65,7 +66,8 @@ Bootstrap 5 provides the grid, forms, tables and utilities; `index.css` override
 - Money: `1.834,36 €` (dot for thousands, comma for decimals, space before the symbol). Dates: `28/09/2026`. Months: `Septiembre 2026`. The PDF prints `580,00 EUR` (Helvetica has no `€`).
 - Statuses: Pendiente, Facturada, Borrador, Aprobada, En revisión, Cerrado, Activo, Archivado.
 - Actions are verbs: Cerrar mes, Aprobar propuesta, Importar 7 actividades, Guardar contrato, Descargar PDF, Exportar CSV.
-- Errors from the API arrive in English; React maps the status code (400 / 401 / 404 / 409) to its own Spanish messages (`errorText` in `src/front/api.js`, plus page-specific texts such as `activityError`).
+- Errors from the API arrive in English; React maps the status code (400 / 401 / 404 / 409) to its own Spanish messages (`errorText` in `src/front/api.js`, plus page-specific texts such as `activityError` and `aiError` for 503 "La IA no está configurada" / 502 "La IA no ha respondido bien").
+- AI panels share one pattern: wand icon (`fa-wand-magic-sparkles`), a one-line explanation "La IA propone; tú revisas y confirmas", a privacy note "Los nombres, mensajes y archivos se envían al proveedor de IA", and nothing saved until the person presses the normal button (Crear, Guardar contrato). Lime-soft background marks what came from the AI.
 
 ## Phase 2 (after the capstone)
 
