@@ -6,7 +6,8 @@ from flask_jwt_extended import jwt_required
 from api.extensions import db
 from api.models import BillingRun, Proposal, Tenant
 from api.routes.helpers import current_tenant_id
-from api.services.pdf import build_proposal_pdf
+from api.services import ai
+from api.services.pdf import MONTHS, build_proposal_pdf
 
 proposals_bp = Blueprint("proposals", __name__)
 
@@ -67,3 +68,70 @@ def download_proposal_pdf(proposal_id):
     return send_file(BytesIO(build_proposal_pdf(tenant, proposal)),
                      mimetype="application/pdf", as_attachment=True,
                      download_name=filename)
+
+
+# --- AI explanation: the AI explains and drafts; it never calculates -------
+
+EXPLAIN_SYSTEM = (
+    "Explicas una propuesta de facturación a la persona que la revisa y "
+    "redactas el correo para su cliente. Usa exactamente los importes y "
+    "cantidades dados: no calcules, no redondees ni inventes nada. Responde "
+    "SOLO con JSON válido con esta forma exacta: "
+    '{"summary": "3 o 4 frases en español que expliquen qué se factura y por '
+    'qué", "email_subject": "asunto del correo", "email_body": "correo '
+    'cordial en español, con saludo, resumen de lo facturado, el total y '
+    'despedida"}'
+)
+
+
+def _explain_prompt(tenant, proposal):
+    """The proposal as plain text, with every figure already computed."""
+    run = proposal.billing_run
+    period = f"{MONTHS[run.month - 1]} {run.year}"
+    lines = []
+    for line in proposal.lines:
+        dates = sorted({a.performed_on for a in line.activities})
+        when = (" · fechas: " + ", ".join(d.strftime("%d/%m") for d in dates)
+                if dates else "")
+        lines.append(f"- {line.description} · cantidad {line.quantity} · "
+                     f"precio unitario {line.unit_price} EUR · importe "
+                     f"{line.amount} EUR{when}")
+    status = "aprobada" if proposal.status == "approved" else "pendiente de aprobar"
+    return (
+        f"Empresa que factura: {tenant.name}\n"
+        f"Cliente: {proposal.client.name}\n"
+        f"Periodo: {period}\n"
+        f"Estado: {status}\n\n"
+        "Líneas:\n" + ("\n".join(lines) or "- (sin líneas)") + "\n\n"
+        f"Base imponible: {proposal.subtotal} EUR\n"
+        f"IVA: {proposal.vat_amount} EUR\n"
+        f"Total: {proposal.total} EUR\n"
+    )
+
+
+@proposals_bp.route("/<int:proposal_id>/explain", methods=["GET"])
+@jwt_required()
+def explain_proposal(proposal_id):
+    """Plain-language summary of the proposal and a draft email for the client.
+
+    Reads only; the figures come from the billing engine, the AI only words them.
+    """
+    proposal = _get_proposal(proposal_id, current_tenant_id())
+    if proposal is None:
+        return jsonify({"message": "proposal not found"}), 404
+    if not ai.is_configured():
+        return jsonify({"message": "AI is not configured"}), 503
+
+    tenant = db.session.get(Tenant, proposal.billing_run.tenant_id)
+    try:
+        answer = ai.complete(_explain_prompt(tenant, proposal),
+                             system=EXPLAIN_SYSTEM)
+    except ai.AIError as error:
+        return jsonify({"message": f"AI provider error: {error}"}), 502
+
+    answer = answer if isinstance(answer, dict) else {}
+    return jsonify({
+        "summary": str(answer.get("summary") or "").strip(),
+        "email_subject": str(answer.get("email_subject") or "").strip(),
+        "email_body": str(answer.get("email_body") or "").strip(),
+    }), 200
