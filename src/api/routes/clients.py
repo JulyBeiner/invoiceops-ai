@@ -5,7 +5,11 @@ from flask_jwt_extended import jwt_required
 
 from api.extensions import db
 from api.models import Client, Contract, ContractPrice, Service
+from api.routes.activities import (IMAGE_TYPES, MAX_UPLOAD_BYTES, _catalog,
+                                   _match, _normalize, _parse_quantity)
 from api.routes.helpers import current_tenant_id
+from api.routes.services import CATALOG
+from api.services import ai
 
 clients_bp = Blueprint("clients", __name__)
 
@@ -145,3 +149,122 @@ def set_contract(client_id):
     contract.prices = prices
     db.session.commit()
     return jsonify(contract.serialize()), 200
+
+
+# --- AI: read a contract and propose its terms; the person saves ----------
+
+CONTRACT_SYSTEM = (
+    "Lees el contrato o el presupuesto de un cliente de una empresa de "
+    "limpieza o mantenimiento en España y extraes las condiciones de "
+    "facturación: la cuota fija mensual, el tipo de IVA y el precio de cada "
+    "servicio con su unidad (hora, unidad, servicio, m²). Nunca inventes "
+    "datos: si algo no aparece, déjalo vacío. No calcules nada. Responde "
+    "SOLO con JSON válido, sin texto antes ni después."
+)
+
+
+def _contract_prompt(text, services):
+    """Build the user prompt: the company's services, the catalog, the schema."""
+    service_names = "\n".join(
+        f"- {s.name} (unidad: {s.unit})" for s in services) or "- (ninguno)"
+    catalog_names = "\n".join(f"- {name} (unidad: {unit})"
+                              for name, unit in CATALOG)
+    return (
+        "Servicios que ya tiene la empresa (usa estos nombres exactos si "
+        f"coinciden):\n{service_names}\n\n"
+        "Servicios habituales del sector (usa estos nombres si el contrato "
+        f"describe lo mismo):\n{catalog_names}\n\n"
+        "Devuelve un objeto JSON con esta forma exacta:\n"
+        '{"fixed_monthly_fee": "número o 0 si no hay cuota fija", '
+        '"vat_rate": "número; 21 si no se dice", '
+        '"services": [{"name": "nombre del servicio", '
+        '"unit": "hora | unidad | servicio | m²", '
+        '"unit_price": "número"}]}\n'
+        "Una entrada por servicio con precio. Si un servicio no tiene precio "
+        "claro, deja unit_price vacío.\n\n"
+        f"Texto del contrato:\n\"\"\"\n{text}\n\"\"\""
+    )
+
+
+def _clean_price(value):
+    """'28,5' -> '28.50'; anything unusable -> None."""
+    try:
+        amount = _parse_quantity(value)
+    except InvalidOperation:
+        return None
+    return str(amount) if amount >= 0 else None
+
+
+def _clean_contract(answer, services):
+    """Re-check what the AI said: parse numbers ourselves and match each
+    service against the company's services, then against the catalog."""
+    answer = answer if isinstance(answer, dict) else {}
+    own = _catalog(services)
+    catalog = {_normalize(name): (name, unit) for name, unit in CATALOG}
+    cleaned = []
+    for item in answer.get("services") or []:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or "").strip()
+        if not name:
+            continue
+        matched = _match(name, own)
+        catalog_match = None if matched else _match(name, catalog)
+        cleaned.append({
+            "name": name,
+            "unit": str(item.get("unit") or "").strip().lower() or (
+                matched.unit if matched else
+                catalog_match[1] if catalog_match else "unidad"),
+            "unit_price": _clean_price(item.get("unit_price")),
+            "exists": matched is not None,
+            "service_id": matched.id if matched else None,
+            "catalog_match": catalog_match[0] if catalog_match else None,
+        })
+    return {
+        "fixed_monthly_fee": _clean_price(answer.get("fixed_monthly_fee")) or "0.00",
+        "vat_rate": _clean_price(answer.get("vat_rate")) or "21.00",
+        "services": cleaned,
+    }
+
+
+@clients_bp.route("/<int:client_id>/contract/suggest", methods=["POST"])
+@jwt_required()
+def suggest_contract(client_id):
+    """Turn the text or a photo of a contract into contract terms to review.
+
+    JSON {"text": ...} or multipart with "text" and/or "file" (an image).
+    Writes nothing: the person reviews and presses "Guardar contrato".
+    """
+    client = _get_client(client_id)
+    if client is None:
+        return jsonify({"message": "Client not found"}), 404
+    if not ai.is_configured():
+        return jsonify({"message": "AI is not configured"}), 503
+
+    data = request.get_json(silent=True) or {}
+    text = str(data.get("text") or request.form.get("text") or "").strip()
+    images = []
+    upload = request.files.get("file")
+    if upload is not None and upload.filename:
+        content = upload.read()
+        if len(content) > MAX_UPLOAD_BYTES:
+            return jsonify({"message": "file is too large (max 10 MB)"}), 400
+        mime_type = (upload.mimetype or "").lower()
+        if mime_type not in IMAGE_TYPES:
+            return jsonify({"message": "file must be an image (png, jpg, webp)"}), 400
+        images = [(content, mime_type)]
+    if not text and not images:
+        return jsonify({"message": "text or an image is required"}), 400
+    if images:
+        text = (text or "(sin texto)") + (
+            "\n\nAdemás hay una imagen adjunta (foto o captura del contrato): "
+            "lee las condiciones que aparezcan en ella.")
+
+    services = list(db.session.scalars(db.select(Service).filter_by(
+        tenant_id=current_tenant_id()).order_by(Service.name)))
+    try:
+        answer = ai.complete(_contract_prompt(text, services),
+                             system=CONTRACT_SYSTEM, images=images)
+    except ai.AIError as error:
+        return jsonify({"message": f"AI provider error: {error}"}), 502
+    return jsonify(_clean_contract(answer, services)), 200
