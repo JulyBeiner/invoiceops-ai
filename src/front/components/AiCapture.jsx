@@ -2,8 +2,9 @@ import { useState } from "react";
 import { activityError, aiError, api } from "../api";
 
 // The AI reads and proposes; the person confirms. This panel sends free text
-// (WhatsApp messages, notes) to /activities/suggest, shows the suggestions as
-// editable rows and creates only the ticked ones through POST /activities.
+// (WhatsApp messages, notes), a photo (work sheet, chat screenshot) or a voice
+// note to /activities/suggest, shows the suggestions as editable rows and
+// creates only the ticked ones through POST /activities.
 
 const CONFIDENCE = {
     high: { css: "io-badge-green", label: "Segura" },
@@ -27,18 +28,34 @@ const toRow = (suggestion, index) => ({
 
 export const AiCapture = ({ clients, services, say, onCreated, onClose }) => {
     const [text, setText] = useState("");
+    const [file, setFile] = useState(null);
+    const [fileKey, setFileKey] = useState(0); // changing it empties the file input
+    const [transcript, setTranscript] = useState(null);
     const [rows, setRows] = useState(null);
     const [busy, setBusy] = useState(false);
+
+    const clearFile = () => {
+        setFile(null);
+        setFileKey((k) => k + 1);
+    };
 
     const analyze = async () => {
         setBusy(true);
         setRows(null);
+        setTranscript(null);
         try {
-            const result = await api("/activities/suggest", { method: "POST", body: { text } });
+            let body = { text };
+            if (file) {
+                body = new FormData();
+                body.append("text", text);
+                body.append("file", file);
+            }
+            const result = await api("/activities/suggest", { method: "POST", body });
             setRows(result.suggestions.map(toRow));
-            if (result.suggestions.length === 0) say("warning", "La IA no ha encontrado actividades en ese texto.");
+            setTranscript(result.transcript);
+            if (result.suggestions.length === 0) say("warning", "La IA no ha encontrado actividades ahí.");
         } catch (err) {
-            say("danger", aiError(err));
+            say("danger", err.status === 400 ? "Adjunta una imagen (png, jpg, webp) o una nota de voz de menos de 10 MB." : aiError(err));
         } finally {
             setBusy(false);
         }
@@ -84,6 +101,8 @@ export const AiCapture = ({ clients, services, say, onCreated, onClose }) => {
         if (remaining.length === 0) {
             setText("");
             setRows(null);
+            setTranscript(null);
+            clearFile();
         }
     };
 
@@ -92,7 +111,7 @@ export const AiCapture = ({ clients, services, say, onCreated, onClose }) => {
             <div className="d-flex justify-content-between align-items-start">
                 <div>
                     <h2 className="mb-1" style={{ fontSize: 18 }}><i className="fa-solid fa-wand-magic-sparkles me-2"></i>Sugerir con IA</h2>
-                    <span className="io-muted" style={{ fontSize: 14 }}>Pega los mensajes de tus trabajadores. La IA propone; tú revisas y confirmas. Nada se guarda hasta que pulses Crear.</span>
+                    <span className="io-muted" style={{ fontSize: 14 }}>Pega los mensajes de tus trabajadores, o adjunta una foto del parte o una nota de voz. La IA propone; tú revisas y confirmas. Nada se guarda hasta que pulses Crear.</span>
                 </div>
                 <button type="button" className="btn btn-link btn-sm" aria-label="Cerrar" onClick={onClose}><i className="fa-solid fa-xmark"></i></button>
             </div>
@@ -104,12 +123,36 @@ export const AiCapture = ({ clients, services, say, onCreated, onClose }) => {
                 value={text}
                 onChange={(e) => setText(e.target.value)}
             />
+
+            <div className="d-flex gap-3 align-items-center flex-wrap">
+                <label className="io-muted mb-0" style={{ fontSize: 14 }} htmlFor="ai-file">
+                    <i className="fa-solid fa-paperclip me-1"></i>O adjunta una foto del parte o una nota de voz:
+                </label>
+                <input
+                    key={fileKey}
+                    id="ai-file"
+                    type="file"
+                    className="form-control form-control-sm"
+                    style={{ maxWidth: 360 }}
+                    accept="image/png,image/jpeg,image/webp,audio/*,.ogg,.opus,.m4a,.mp3,.wav"
+                    onChange={(e) => setFile(e.target.files[0] || null)}
+                />
+                {file && <button type="button" className="btn btn-link btn-sm" onClick={clearFile}>Quitar</button>}
+            </div>
+
             <div className="d-flex gap-2 align-items-center">
-                <button type="button" className="btn btn-primary" disabled={busy || !text.trim()} onClick={analyze}>
+                <button type="button" className="btn btn-primary" disabled={busy || (!text.trim() && !file)} onClick={analyze}>
                     <i className="fa-solid fa-wand-magic-sparkles me-2"></i>{busy && !rows ? "Analizando…" : "Analizar"}
                 </button>
-                <span className="io-muted" style={{ fontSize: 13 }}>Los nombres y mensajes se envían al proveedor de IA para analizarlos.</span>
+                <span className="io-muted" style={{ fontSize: 13 }}>Los nombres, mensajes y archivos se envían al proveedor de IA para analizarlos.</span>
             </div>
+
+            {transcript && (
+                <div className="card p-2 px-3" style={{ background: "var(--io-lime-soft)" }}>
+                    <span className="fw-semibold" style={{ fontSize: 13 }}><i className="fa-solid fa-microphone me-2"></i>Transcripción de la nota de voz</span>
+                    <span style={{ fontSize: 14 }}>{transcript}</span>
+                </div>
+            )}
 
             {rows && rows.length > 0 && (
                 <>
