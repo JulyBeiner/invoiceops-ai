@@ -17,7 +17,7 @@ const initialsOf = (name) =>
         .join("")
         .toUpperCase();
 
-export const Sidebar = () => {
+export const Sidebar = ({ open = false }) => {
     const { store, dispatch } = useGlobalReducer();
     const navigate = useNavigate();
     const user = store.user;
@@ -28,7 +28,7 @@ export const Sidebar = () => {
     };
 
     return (
-        <aside className="io-sidebar">
+        <aside className={`io-sidebar${open ? " io-sidebar-open" : ""}`}>
             <NavLink to="/" className="io-brand">
                 <span className="io-brand-mark">
                     <i className="fa-solid fa-check text-white"></i>
