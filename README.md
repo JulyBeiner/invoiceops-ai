@@ -106,6 +106,15 @@ The Mermaid diagram with every column is in `docs/SPECS.md`.
 
 Client names, the pasted messages and the uploaded files are sent to the AI provider to be analysed; at this volume each call costs cents. Without a key the application works fully and the AI buttons say so.
 
+## Known limitations
+
+- A month close cannot be undone or re-run: if an activity was missing, it will be billed in the next close.
+- One active contract per client, without price history: changing a price applies from the next close.
+- Roles (`owner`, `admin`, `operator`) are stored but not enforced yet: every user can do everything inside their own company.
+- Access tokens last 12 hours and there is no refresh token: after that, log in again.
+- The AI features depend on an external provider and are disabled when no key is configured.
+- The demo account is shared: anyone can change its data; `SEED_RESET=1` reloads it on the next deploy.
+
 ## What comes next
 
 Phase 2 of a real product: real WhatsApp Business connection (messages arrive without pasting), a review of the month before closing it (missing visits, unusual quantities), end-client approval and payment, accounting-firm channel, integrations with Holded / Quipu, and Verifactu-compliant invoicing only with traction.
