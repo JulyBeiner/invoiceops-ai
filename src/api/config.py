@@ -1,4 +1,5 @@
 import os
+from datetime import timedelta
 
 
 def _normalize(url):
@@ -8,6 +9,7 @@ def _normalize(url):
 
 class BaseConfig:
     SECRET_KEY = os.getenv("FLASK_APP_KEY", "dev-secret-change-me")
+    JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=12)
     JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", SECRET_KEY)
     SQLALCHEMY_DATABASE_URI = _normalize(os.getenv("DATABASE_URL"))
     SQLALCHEMY_TRACK_MODIFICATIONS = False
